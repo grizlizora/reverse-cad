@@ -1,6 +1,8 @@
 # 🏢 ReverseCAD Commercial & Enterprise Licensing Agreement
 
-> **Annual Commercial License Fee:** **$10,000 USD / year**  
+> **Commercial License Structure:**  
+> • **Standard Commercial:** **$10,000 USD / year** (Independent businesses, SMB workshops, 3D print farms, startups up to 50 employees)  
+> • **Enterprise & OEM Tier:** **$35,000 USD / year** (Corporations >50 employees, public companies, high-volume cloud platforms >100k conversions/yr, or platform white-label embedding)  
 > **Licensor:** Roman Vaida ([@grizlizora](https://t.me/grizlizora))  
 > **Contact & Procurement:** [roma.vaida66@gmail.com](mailto:roma.vaida66@gmail.com) • [Telegram: @grizlizora](https://t.me/grizlizora)
 
@@ -14,20 +16,20 @@ ReverseCAD operates under a **Dual-Licensing Model**:
 
 ---
 
-## 2. Who Requires a Commercial License?
+## 2. Commercial Pricing Tiers
 
-A paid Commercial License is strictly mandatory for any entity that meets **any** of the following criteria:
+To maintain fair, balanced, and proportional exchange of value, commercial licensing is structured into two straightforward tiers:
 
-1. **For-Profit Entities:** Any corporation, LLC, Inc., GmbH, Ltd., partnership, or sole proprietorship (ФОП / ТОВ) deploying ReverseCAD for internal operations, product development, or client deliverables.
-2. **Commercial 3D Printing & Manufacturing Bureaus:** Any business providing on-demand 3D printing, CNC machining, or CAD conversion services for paying customers.
-3. **Software Vendors & Platforms:** Any company embedding ReverseCAD or its modules (`dist/`, `src/`, or MCP Server) into proprietary, closed-source software, cloud APIs, web platforms, or slicer plugins.
-4. **Enterprise Engineering Departments:** Any engineering team utilizing ReverseCAD to accelerate CAD modeling or automate STL-to-STEP workflows for commercial products.
+| License Tier | Annual Fee | Target Organization & Scope |
+|:---|:---|:---|
+| 💼 **Standard Commercial** | **$10,000 USD / year** | Independent workshops, CNC job shops, 3D printing service bureaus, design studios, and startups with up to 50 employees. Includes unlimited internal seats and production use. |
+| 🏢 **Enterprise & High-Volume OEM** | **$35,000 USD / year** | Corporations with >50 employees, public companies, enterprise cloud platforms, cloud slicers (e.g. Bambu/Prusa/Xometry scale) processing >100,000 conversions/yr, or direct white-label embedding. |
 
 ---
 
 ## 3. What is Included in the Commercial License?
 
-Upon payment of the **$10,000 USD annual license fee**, the licensee receives an official **ReverseCAD Enterprise Certificate of License** granting:
+Upon payment of the applicable annual license fee, the licensee receives an official **ReverseCAD Enterprise Certificate of License** granting:
 
 | Benefit | Description |
 |:---|:---|
