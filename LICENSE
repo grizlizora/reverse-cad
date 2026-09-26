@@ -31,14 +31,17 @@ You must reproduce this license and copyright notice in all copies and substanti
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-PART B: COMMERCIAL & ENTERPRISE EDITION ($10,000 USD / YEAR)
+PART B: COMMERCIAL & ENTERPRISE EDITION ($10,000 / $35,000 USD / YEAR)
 ================================================================================
 
 ANY USE BY OR ON BEHALF OF A FOR-PROFIT ENTITY, COMMERCIAL 3D PRINTING SERVICE,
 MANUFACTURING FACILITY, CAD/CAM VENDOR, OR REVENUE-GENERATING PLATFORM
 REQUIRES A PAID COMMERCIAL LICENSE.
 
-Commercial License Fee: $10,000 USD per calendar year.
+Commercial License Fee:
+- Standard Commercial: $10,000 USD per calendar year.
+- Enterprise & High-Volume OEM: $35,000 USD per calendar year.
+See COMMERCIAL.md for scope, entity definitions, and procurement terms.
 
 Using this software for any commercial purpose without an active, paid Commercial License
 constitutes copyright infringement under international treaties (Berne Convention),
