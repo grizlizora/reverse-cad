@@ -1,0 +1,47 @@
+{
+  "name": "stl-to-step-json-pipeline",
+  "version": "1.0.0",
+  "description": "High-performance multi-threaded reverse-engineering pipeline for 3D models (STL to STEP + JSON)",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "reverse-cad": "./dist/cli.js",
+    "stl-convert": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:native": "make -C src/native",
+    "start": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/cli.js",
+    "convert": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/cli.js",
+    "dev": "bun run src/cli.ts",
+    "test": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/test/run-tests.js",
+    "test:dev": "bun run src/test/run-tests.ts",
+    "benchmark": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/test/benchmark-latency.js"
+  },
+  "keywords": [
+    "3d",
+    "stl",
+    "step",
+    "cad",
+    "reverse-engineering",
+    "ransac",
+    "opencascade",
+    "manifold"
+  ],
+  "author": "Roman Vaida <roma.vaida66@gmail.com> (https://github.com/grizlizora)",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "cli-progress": "^3.12.0",
+    "piscina": "^4.8.0",
+    "three": "^0.174.0",
+    "three-mesh-bvh": "^0.9.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cli-progress": "^3.11.6",
+    "@types/node": "^22.13.9",
+    "@types/three": "^0.174.0",
+    "typescript": "^5.8.2"
+  }
+}

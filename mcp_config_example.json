@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "reverse-cad": {
+      "command": "/bin/bash",
+      "args": [
+        "/absolute/path/to/reverse-cad/convert.sh",
+        "--mcp"
+      ],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

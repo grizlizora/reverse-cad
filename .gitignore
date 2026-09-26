@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build & distribution
+dist/
+build/
+
+# Generated 3D models and conversion outputs
+output/
+output_*/
+batch_output/
+test_diff_output/
+demo_models/
+
+# 3D files & binary CAD artifacts
+*.stl
+*.STL
+*.step
+*.STEP
+*.glb
+*.GLB
+*.ndjson
+
+# OS & Editor metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs & Environment
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+
+# Local XML dumps
+*.xml
