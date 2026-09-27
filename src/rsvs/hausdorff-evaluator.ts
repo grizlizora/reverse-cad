@@ -39,22 +39,8 @@ export function evaluatePointResidual(
     }
   }
 
-  // Unassigned point: find minimum distance across all surfaces with zero heap allocations
-  let minD = Infinity;
-  for (let idx = 0; idx < surfaces.length; idx++) {
-    const surf = surfaces[idx];
-    if (surf.type === 'plane' || surf.type === 'cylinder' || surf.type === 'cone' || surf.type === 'torus') {
-      const d = distancePointToAnalyticalSurface(px, py, pz, surf);
-      if (d < minD) minD = d;
-    }
-  }
-
-  // If no analytical surfaces match, project to source triangle
-  if (minD === Infinity) {
-    minD = distancePointToMeshTriangleDirect(px, py, pz, mesh.positions, mesh.indices, triangleIndex);
-  }
-
-  return minD;
+  // Unassigned point: project to its source triangle facet (emitted as exact facet plane in STEP)
+  return distancePointToMeshTriangleDirect(px, py, pz, mesh.positions, mesh.indices, triangleIndex);
 }
 
 /**

@@ -13,6 +13,8 @@ output_*/
 batch_output/
 test_diff_output/
 demo_models/
+приклад/
+*.heic
 
 # 3D files & binary CAD artifacts
 *.stl

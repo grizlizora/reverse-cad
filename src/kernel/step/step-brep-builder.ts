@@ -57,6 +57,7 @@ export async function writeProductDefinitionHierarchy(
   allocator: StepIdAllocator,
   modelName: string,
   solidBRepIds: string[],
+  axisPlacementId: string,
   geometricContextId: string,
   author = 'CAD Reverse-Engineering Engine v1.0',
   organization = 'Open Source CAD Project'
@@ -67,19 +68,22 @@ export async function writeProductDefinitionHierarchy(
   const prodDefId = allocator.nextId();
   const prodDefFormId = allocator.nextId();
   const prodId = allocator.nextId();
+  const appContextId = allocator.nextId();
   const prodContextId = allocator.nextId();
   const appMechContextId = allocator.nextId();
   const appProtocolDefId = allocator.nextId();
 
-  await writer.writeLine(`${shapeRepId} = ADVANCED_BREP_SHAPE_REPRESENTATION('${modelName}_Assembly', (${solidBRepIds.join(', ')}), ${geometricContextId});`);
+  const repItems = [axisPlacementId, ...solidBRepIds].join(', ');
+  await writer.writeLine(`${shapeRepId} = ADVANCED_BREP_SHAPE_REPRESENTATION('${modelName}_Assembly', (${repItems}), ${geometricContextId});`);
   await writer.writeLine(`${shapeDefRepId} = SHAPE_DEFINITION_REPRESENTATION(${prodDefShapeId}, ${shapeRepId});`);
   await writer.writeLine(`${prodDefShapeId} = PRODUCT_DEFINITION_SHAPE('${modelName}_Shape', 'Shape of ${modelName}', ${prodDefId});`);
   await writer.writeLine(`${prodDefId} = PRODUCT_DEFINITION('${modelName}_PD', 'Product definition for ${modelName}', ${prodDefFormId}, ${prodContextId});`);
   await writer.writeLine(`${prodDefFormId} = PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE('${modelName}_PDF', 'Formation 1', ${prodId}, .NOT_KNOWN.);`);
   await writer.writeLine(`${prodId} = PRODUCT('${modelName}', '${modelName}', 'Converted from 3D Mesh', (${appMechContextId}));`);
-  await writer.writeLine(`${prodContextId} = PRODUCT_DEFINITION_CONTEXT('part definition', ${appProtocolDefId}, 'design');`);
-  await writer.writeLine(`${appMechContextId} = MECHANICAL_CONTEXT('mechanical', ${appProtocolDefId}, 'mechanical design');`);
-  await writer.writeLine(`${appProtocolDefId} = APPLICATION_PROTOCOL_DEFINITION('international standard', 'ap242_managed_model_based_3d_engineering', 2020, ${allocator.nextId()});`);
+  await writer.writeLine(`${appContextId} = APPLICATION_CONTEXT('core data for automotive mechanical design processes');`);
+  await writer.writeLine(`${prodContextId} = PRODUCT_DEFINITION_CONTEXT('part definition', ${appContextId}, 'design');`);
+  await writer.writeLine(`${appMechContextId} = MECHANICAL_CONTEXT('mechanical', ${appContextId}, 'mechanical design');`);
+  await writer.writeLine(`${appProtocolDefId} = APPLICATION_PROTOCOL_DEFINITION('international standard', 'automotive_design', 2000, ${appContextId});`);
 }
 
 /**

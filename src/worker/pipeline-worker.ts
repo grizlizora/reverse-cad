@@ -65,7 +65,7 @@ export async function processPipelineTask(
     // Maps STL Top (+Z) -> CAD Top (+Y), STL Front (-Y) -> CAD Front (+Z)
     // Ensures all 6 orthogonal views (Top/Bottom/Front/Back/Left/Right) match 1:1
     // with original STL in Autodesk Viewer & CAD systems without manual reorientation.
-    if (payload.options.alignCadViewer !== false) {
+    if (payload.options.alignCadViewer === true) {
       alignMeshForCadViewer(rawMesh);
     }
 

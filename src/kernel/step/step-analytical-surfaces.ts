@@ -11,6 +11,7 @@ import { preIndexFacetPlanes } from './step-facet-plane-indexer.js';
 export interface SurfaceStepMapping {
   surfaceToStepId: Map<string, string>;
   triangleToSurfaceId: Map<number, string>;
+  triangleSameSense: Uint8Array;
   getOrCreateFacetPlane: (tIdx: number) => Promise<string>;
 }
 
@@ -28,6 +29,7 @@ export async function writeAnalyticalSurfaces(
 ): Promise<SurfaceStepMapping> {
   const surfaceToStepId = new Map<string, string>();
   const triangleToSurfaceId = new Map<number, string>();
+  const triangleSameSense = new Uint8Array(mesh.triangleCount).fill(1);
 
   for (let sIdx = 0; sIdx < surfaces.length; sIdx++) {
     const s = surfaces[sIdx];
@@ -56,8 +58,28 @@ export async function writeAnalyticalSurfaces(
       await writer.writeLine(`${planeId} = PLANE('${s.id}', ${axisPlace});`);
       surfaceToStepId.set(s.id, planeId);
 
+      const positions = mesh.positions;
+      const indices = mesh.indices;
       for (let k = 0; k < s.inlierIndices.length; k++) {
-        triangleToSurfaceId.set(s.inlierIndices[k], planeId);
+        const tIdx = s.inlierIndices[k];
+        triangleToSurfaceId.set(tIdx, planeId);
+
+        const i0 = indices[tIdx * 3] * 3;
+        const i1 = indices[tIdx * 3 + 1] * 3;
+        const i2 = indices[tIdx * 3 + 2] * 3;
+        const e1x = positions[i1] - positions[i0];
+        const e1y = positions[i1 + 1] - positions[i0 + 1];
+        const e1z = positions[i1 + 2] - positions[i0 + 2];
+        const e2x = positions[i2] - positions[i0];
+        const e2y = positions[i2 + 1] - positions[i0 + 1];
+        const e2z = positions[i2 + 2] - positions[i0 + 2];
+        const tnx = e1y * e2z - e1z * e2y;
+        const tny = e1z * e2x - e1x * e2z;
+        const tnz = e1x * e2y - e1y * e2x;
+        const dot = tnx * p.normal[0] + tny * p.normal[1] + tnz * p.normal[2];
+        if (dot < 0) {
+          triangleSameSense[tIdx] = 0;
+        }
       }
     } else if (s.type === 'cylinder') {
       const c = s as CylinderSurface;
@@ -85,50 +107,12 @@ export async function writeAnalyticalSurfaces(
       await writer.writeLine(`${cylId} = CYLINDRICAL_SURFACE('${s.id}', ${axisPlace}, ${formatStepFloat(c.radius)});`);
       surfaceToStepId.set(s.id, cylId);
 
-      const positions = mesh.positions;
-      const indices = mesh.indices;
-      for (let k = 0; k < s.inlierIndices.length; k++) {
-        const tIdx = s.inlierIndices[k];
-        if (triangleToSurfaceId.has(tIdx)) continue;
-
-        // Verify normal perpendicularity against cylinder axis
-        const i0 = indices[tIdx * 3] * 3;
-        const i1 = indices[tIdx * 3 + 1] * 3;
-        const i2 = indices[tIdx * 3 + 2] * 3;
-        const e1x = positions[i1] - positions[i0];
-        const e1y = positions[i1 + 1] - positions[i0 + 1];
-        const e1z = positions[i1 + 2] - positions[i0 + 2];
-        const e2x = positions[i2] - positions[i0];
-        const e2y = positions[i2 + 1] - positions[i0 + 1];
-        const e2z = positions[i2 + 2] - positions[i0 + 2];
-        let tnx = e1y * e2z - e1z * e2y;
-        let tny = e1z * e2x - e1x * e2z;
-        let tnz = e1x * e2y - e1y * e2x;
-        const tLen = Math.sqrt(tnx * tnx + tny * tny + tnz * tnz);
-        if (tLen > 1e-12) {
-          tnx /= tLen; tny /= tLen; tnz /= tLen;
-          const normalDotAxis = Math.abs(tnx * dirVec[0] + tny * dirVec[1] + tnz * dirVec[2]);
-          if (normalDotAxis > 0.22) continue; // Skip flat or angled facets (chamfers, flanks)
-
-          // Verify normal points radially towards/away from cylinder axis
-          const cx = (positions[i0] + positions[i1] + positions[i2]) / 3;
-          const cy = (positions[i0 + 1] + positions[i1 + 1] + positions[i2 + 1]) / 3;
-          const cz = (positions[i0 + 2] + positions[i1 + 2] + positions[i2 + 2]) / 3;
-          const dx = cx - c.axisOrigin[0];
-          const dy = cy - c.axisOrigin[1];
-          const dz = cz - c.axisOrigin[2];
-          const pDot = dx * dirVec[0] + dy * dirVec[1] + dz * dirVec[2];
-          const rx = dx - pDot * dirVec[0];
-          const ry = dy - pDot * dirVec[1];
-          const rz = dz - pDot * dirVec[2];
-          const rDist = Math.hypot(rx, ry, rz);
-          if (rDist > 1e-4) {
-            const radialAlign = Math.abs((tnx * rx + tny * ry + tnz * rz) / rDist);
-            if (radialAlign < 0.70) continue; // Not pointing radially: reject!
-          }
-        }
-        triangleToSurfaceId.set(tIdx, cylId);
-      }
+      // NOTE: In STEP B-Rep (ISO 10303-42), POLY_LOOP consists of 3D straight chords.
+      // Placing individual triangular POLY_LOOPs on a CYLINDRICAL_SURFACE causes OpenCASCADE (FreeCAD)
+      // to project straight chords into periodic (u,v) space, crossing the seam and creating
+      // BOPAlgo SelfIntersect, dense horizontal stripe artifacts, and black spots.
+      // Therefore, mesh triangles are emitted on their exact facet planes (PLANE),
+      // while cylindrical analytical parameters are preserved in the semantic CAD feature JSON.
     }
   }
 
@@ -144,6 +128,7 @@ export async function writeAnalyticalSurfaces(
   return {
     surfaceToStepId,
     triangleToSurfaceId,
+    triangleSameSense,
     getOrCreateFacetPlane
   };
 }

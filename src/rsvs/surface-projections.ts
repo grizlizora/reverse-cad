@@ -56,12 +56,6 @@ export function distancePointToCylinder(
   const rho = Math.hypot(rx, ry, rz);
   const deltaR = Math.abs(rho - cyl.radius);
 
-  if (cyl.height && cyl.height > 0) {
-    const halfH = cyl.height * 0.5;
-    const deltaT = Math.max(0, Math.abs(t) - halfH);
-    return Math.hypot(deltaR, deltaT);
-  }
-
   return deltaR;
 }
 

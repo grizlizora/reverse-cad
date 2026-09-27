@@ -20,7 +20,7 @@ import {
   writePresentationRepresentation
 } from './step-presentation-styles.js';
 import { writeAnalyticalSurfaces } from './step-analytical-surfaces.js';
-import { buildMultiBodyBRep, writeProductDefinitionHierarchy } from './step-brep-builder.js';
+import { buildMultiBodyBRep, writeProductDefinitionHierarchy, writeStepFooter } from './step-brep-builder.js';
 
 export * from './step-types.js';
 export * from './step-id-allocator.js';
@@ -59,8 +59,8 @@ export async function writeStepFile(
     targetShells = rawShells.filter(s => !s.isCavity && s.triangleIndices.length > 0);
   }
 
-  // Graceful fallback: If no shells provided, wrap entire mesh in a single body
-  if (targetShells.length === 0) {
+  // Graceful fallback: If no shells provided or all filtered out, wrap entire mesh in a single body
+  if (targetShells.length === 0 && mesh.triangleCount > 0) {
     targetShells = [{
       shellIndex: 0,
       triangleIndices: Array.from({ length: mesh.triangleCount }, (_, i) => i),
@@ -73,17 +73,26 @@ export async function writeStepFile(
 
   // Topologically classify solid bodies based on kinematic role
   const classified = classifySolidBodies(targetShells, options.kinematicJoints);
-  targetShells = classified.map(c => c.shell);
+  if (classified.length > 0) {
+    targetShells = classified.map(c => c.shell);
+  }
 
   // Assign semantic configurations to each body
-  const bodyDefinitions: SolidBodyConfig[] = classified.map((c, idx) => {
+  const bodyDefinitions: SolidBodyConfig[] = targetShells.map((sh, idx) => {
     if (options.bodyConfigs && options.bodyConfigs[idx]) {
       return options.bodyConfigs[idx];
     }
+    if (classified[idx]) {
+      return {
+        name: classified[idx].name,
+        colorLabel: classified[idx].colorLabel,
+        colorRgb: classified[idx].colorRgb
+      };
+    }
     return {
-      name: c.name,
-      colorLabel: c.colorLabel,
-      colorRgb: c.colorRgb
+      name: `Solid_Body_${idx + 1}`,
+      colorLabel: 'steel_gray',
+      colorRgb: [0.70, 0.70, 0.72]
     };
   });
 
@@ -140,8 +149,8 @@ export async function writeStepFile(
     contextIds.idContext
   );
 
-  // 11. Close writer and flush remaining buffers
-  await writer.close();
+  // 11. Finalize and close ISO 10303-21 STEP data section and file
+  await writeStepFooter(writer);
 
   return brepResult.report;
 }

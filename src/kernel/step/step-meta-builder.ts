@@ -37,9 +37,9 @@ export async function writeStepHeader(
 ): Promise<void> {
   await writer.writeLine('ISO-10303-21;');
   await writer.writeLine('HEADER;');
-  await writer.writeLine(`FILE_DESCRIPTION(('STEP AP242', 'Engineered Multi-Body Solid B-Rep with Analytical Surfaces and Semantic Thread Features'), '2;1');`);
+  await writer.writeLine(`FILE_DESCRIPTION(('STEP AP214', 'STEP AP242', 'Engineered Multi-Body Solid B-Rep with Analytical Surfaces and Semantic Thread Features'), '2;1');`);
   await writer.writeLine(`FILE_NAME('${modelName}.step', '${timestamp}', ('${author}'), ('${org}'), 'Antigravity CAD Kernel v2.1 (Multi-Body)', 'Antigravity Pipeline', '');`);
-  await writer.writeLine(`FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));`);
+  await writer.writeLine(`FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }', 'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));`);
   await writer.writeLine('ENDSEC;');
   await writer.writeLine('DATA;');
 }

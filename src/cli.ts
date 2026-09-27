@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   let stepOnly = false;
   let heatmapMode: 'failed-only' | 'always' | 'none' = 'failed-only';
   let verbose = false;
-  let alignCadViewer = true;
+  let alignCadViewer = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];

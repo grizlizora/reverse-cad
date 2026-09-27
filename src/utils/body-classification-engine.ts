@@ -32,7 +32,10 @@ export class BodyClassificationEngine {
   }
 
   public classify(shells: MeshShell[], kinematicJoints: CADKinematicJoint[] = []): ClassifiedBody[] {
-    const solidShells = shells.filter(s => !s.isCavity && Math.abs(s.signedVolume) > 1.0);
+    let solidShells = shells.filter(s => !s.isCavity && s.triangleIndices.length > 0);
+    if (solidShells.length === 0) {
+      solidShells = shells.filter(s => s.triangleIndices.length > 0);
+    }
     if (solidShells.length === 0) {
       return [];
     }
