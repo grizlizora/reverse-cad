@@ -149,7 +149,7 @@ export function collapseCoplanarEdges(
       const crossZ = e01x * (-e20y) - e01y * (-e20x);
       const area2 = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
       const minHeight = area2 / (maxEdge + 1e-12);
-      if (minHeight < 0.04 * maxEdge) {
+      if (minHeight < 0.01 * maxEdge) {
         return true;
       }
     }

@@ -41,8 +41,17 @@ for %%A in (%*) do (
     )
 )
 
+set "NODE_HEAP=4096"
+for /f "tokens=2 delims==" %%M in ('wmic OS get TotalVisibleMemorySize /value 2^>nul') do (
+    set /a "SYS_MEM=%%M / 1024"
+    set /a "CALC_HEAP=SYS_MEM * 6 / 10"
+    if !CALC_HEAP! gtr 8192 set "CALC_HEAP=8192"
+    if !CALC_HEAP! lss 2048 set "CALC_HEAP=2048"
+    set "NODE_HEAP=!CALC_HEAP!"
+)
+
 if "%RUNTIME%"=="node" (
-    node --max-old-space-size=8192 --stack-size=8192 --expose-gc "%TARGET_SCRIPT%" %*
+    node --max-old-space-size=%NODE_HEAP% --stack-size=8192 --expose-gc "%TARGET_SCRIPT%" %*
 ) else (
     bun run "%TARGET_SCRIPT%" %*
 )

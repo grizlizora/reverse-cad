@@ -13,6 +13,7 @@ export interface SurfaceStepMapping {
   triangleToSurfaceId: Map<number, string>;
   triangleSameSense: Uint8Array;
   getOrCreateFacetPlane: (tIdx: number) => Promise<string>;
+  surfaces?: SurfacePrimitive[];
 }
 
 export { preIndexFacetPlanes };
@@ -129,6 +130,7 @@ export async function writeAnalyticalSurfaces(
     surfaceToStepId,
     triangleToSurfaceId,
     triangleSameSense,
-    getOrCreateFacetPlane
+    getOrCreateFacetPlane,
+    surfaces
   };
 }

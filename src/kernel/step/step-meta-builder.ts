@@ -5,6 +5,7 @@
 import { RawMesh } from '../../types/geometry.js';
 import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
+import { formatStepFloat } from './step-orthonormal-basis.js';
 
 export interface StepContextIds {
   idLengthUnit: string;
@@ -109,12 +110,9 @@ export async function writeCartesianPoints(
     const x = mesh.positions[i * 3];
     const y = mesh.positions[i * 3 + 1];
     const z = mesh.positions[i * 3 + 2];
-    const xClean = Object.is(x, -0) || Math.abs(x) < 1e-7 ? 0 : x;
-    const yClean = Object.is(y, -0) || Math.abs(y) < 1e-7 ? 0 : y;
-    const zClean = Object.is(z, -0) || Math.abs(z) < 1e-7 ? 0 : z;
-    const xStr = xClean.toFixed(5);
-    const yStr = yClean.toFixed(5);
-    const zStr = zClean.toFixed(5);
+    const xStr = formatStepFloat(x, 5);
+    const yStr = formatStepFloat(y, 5);
+    const zStr = formatStepFloat(z, 5);
     pointBlock += `${pId} = CARTESIAN_POINT('', (${xStr}, ${yStr}, ${zStr}));\n`;
     pointIds[i] = pId;
     stepVerticesX[i] = parseFloat(xStr);

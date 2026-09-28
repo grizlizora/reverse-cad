@@ -69,12 +69,51 @@ export function pickRandomUnassigned(unassigned: Uint8Array): number {
   return -1;
 }
 
+export function buildSpatialGrid(
+  unassigned: Uint8Array,
+  centroids: Float32Array,
+  cellSize: number = 20.0
+): UniformSpatialGrid3D {
+  const grid = new UniformSpatialGrid3D(cellSize);
+  const len = unassigned.length;
+  for (let i = 0; i < len; i++) {
+    if (unassigned[i]) {
+      const i3 = i * 3;
+      grid.insert(i, centroids[i3], centroids[i3 + 1], centroids[i3 + 2]);
+    }
+  }
+  return grid;
+}
+
 export function pickLocalizedNeighborBuffers(
   unassigned: Uint8Array,
   centroids: Float32Array,
   p: Point3D,
-  maxDist: number
+  maxDist: number,
+  spatialGrid?: UniformSpatialGrid3D
 ): number {
+  if (spatialGrid) {
+    const neighbors = spatialGrid.queryNeighbors(p[0], p[1], p[2]);
+    if (neighbors.length > 0) {
+      const maxDistSq = maxDist * maxDist;
+      const start = Math.floor(Math.random() * neighbors.length);
+      const probeCount = Math.min(100, neighbors.length);
+      for (let i = 0; i < probeCount; i++) {
+        const idx = neighbors[(start + i) % neighbors.length];
+        if (unassigned[idx]) {
+          const i3 = idx * 3;
+          const dx = centroids[i3] - p[0];
+          const dy = centroids[i3 + 1] - p[1];
+          const dz = centroids[i3 + 2] - p[2];
+          const dSq = dx * dx + dy * dy + dz * dz;
+          if (dSq > 1e-4 && dSq < maxDistSq) {
+            return idx;
+          }
+        }
+      }
+    }
+  }
+
   const len = unassigned.length;
   const maxDistSq = maxDist * maxDist;
   const start = Math.floor(Math.random() * len);

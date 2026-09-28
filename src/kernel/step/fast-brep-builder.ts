@@ -13,6 +13,8 @@ import { BRepReportAggregator } from './brep-report-calculator.js';
 import { TopologyEdgeIndexer } from './topology-edge-indexer.js';
 import { StepFaceEmitter } from './step-face-emitter.js';
 import { clusterCoplanarTriangles, extractJordanFacesFromCluster } from './planar/index.js';
+import { analyzeRevolutionZSurfaces } from './revolution/revolution-zband-analyzer.js';
+import { synthesizeRevolutionFaces } from './revolution/revolution-face-synthesizer.js';
 
 /**
  * Cooperative Event Loop Yielding Controller (16ms quantum).
@@ -114,7 +116,7 @@ async function emitFallbackQuadsAndTris(
       if (lenB < 1e-12) continue;
 
       const cosAlign = (nAx * nBx + nAy * nBy + nAz * nBz) / (lenA * lenB);
-      if (cosAlign < 0.950) continue;
+      if (cosAlign < 0.900) continue;
 
       const d21x = p2x - p1x, d21y = p2y - p1y, d21z = p2z - p1z;
       const d01x = p0x - p1x, d01y = p0y - p1y, d01z = p0z - p1z;
@@ -131,7 +133,7 @@ async function emitFallbackQuadsAndTris(
       const dotC1 = c1x * nAx + c1y * nAy + c1z * nAz;
       const dotC3 = c3x * nAx + c3y * nAy + c3z * nAz;
 
-      if (dotC1 > 1e-7 && dotC3 > 1e-7) {
+      if (dotC1 > -1e-6 && dotC3 > -1e-6) {
         mergedQuad = [oppA, edgeU, oppB, edgeV];
         matchedNeighbor = tB;
         break;
@@ -234,6 +236,27 @@ export async function buildFastMultiBodyBRep(
 
     const mergedTris = new Uint8Array(mesh.triangleCount);
 
+    // 4b. Synthesize true analytical revolution B-Rep faces for cylinders/bores (if any)
+    if (surfaceMapping.surfaces && surfaceMapping.surfaces.length > 0) {
+      const zones = analyzeRevolutionZSurfaces(mesh, surfaceMapping.surfaces);
+      if (zones.length > 0) {
+        await emitter.flush();
+        const revResult = await synthesizeRevolutionFaces(
+          writer,
+          allocator,
+          zones,
+          mesh,
+          surfaceMapping.surfaceToStepId
+        );
+        for (let rIdx = 0; rIdx < revResult.faceIds.length; rIdx++) {
+          shellFaceIds.push(revResult.faceIds[rIdx]);
+        }
+        for (const t of revResult.handledTriangles) {
+          mergedTris[t] = 1;
+        }
+      }
+    }
+
     const singleTris: number[] = [];
     let singleSurfaceId = '';
     let singleSameSenseBool = true;
@@ -242,7 +265,8 @@ export async function buildFastMultiBodyBRep(
     for (let c = 0; c < clusters.length; c++) {
       await yieldCtrl.maybeYield();
       const cluster = clusters[c];
-      const comp = cluster.triangleIndices;
+      const comp = cluster.triangleIndices.filter(t => !mergedTris[t]);
+      if (comp.length === 0) continue;
       const sameSenseBool = cluster.sameSense === 1;
 
       if (comp.length === 1) {

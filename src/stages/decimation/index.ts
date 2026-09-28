@@ -29,7 +29,7 @@ export interface DecimationOptions {
  * (ratchet notches, pad cutouts, fillets, chamfers, thin walls, stampings).
  */
 export function decimateMesh(mesh: RawMesh, options: DecimationOptions = {}): RawMesh {
-  const threshold = options.maxTrianglesThreshold ?? 35000;
+  const threshold = options.maxTrianglesThreshold ?? 12000;
   if (mesh.triangleCount <= threshold) {
     // Triangle count is already within budget, keep original 100% mesh fidelity
     return mesh;

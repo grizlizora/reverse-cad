@@ -6,7 +6,7 @@ import { RawMesh, CylinderSurface, Point3D, Vector3D } from '../../types/geometr
 import { computeCylinderAngularMetrics } from './angular-metrics.js';
 import { FastPRNG, pickRandomUnassigned } from './cylinder-sampler.js';
 import { scoreCylinderCandidate } from './cylinder-scoring.js';
-import { pickLocalizedNeighborBuffers } from './spatial-grid.js';
+import { pickLocalizedNeighborBuffers, buildSpatialGrid } from './spatial-grid.js';
 import { generateCylinderHypothesis } from './cylinder-hypothesis.js';
 import { validateCylinderFeature, pruneCylinderInliers } from './cylinder-feature-validator.js';
 
@@ -46,8 +46,11 @@ export function extractCylindersRANSACInternal(
   const candidateInlierBuffer = new Int32Array(totalTriangles);
   const bestInlierBuffer = new Int32Array(totalTriangles);
 
+  const cellSize = Math.min(30.0, Math.max(5.0, meshDiag * 0.05));
+  const spatialGrid = buildSpatialGrid(unassigned, centroids, cellSize);
+
   let cylFailures = 0;
-  const maxConsecutiveFailures = 8;
+  const maxConsecutiveFailures = 25;
 
   while (unassignedCount > totalTriangles * 0.02 && cylFailures < maxConsecutiveFailures) {
     let bestInlierCount = 0;
@@ -55,7 +58,7 @@ export function extractCylindersRANSACInternal(
     let bestAxisDir: Vector3D = [0, 0, 1];
     let bestRadius = 0;
 
-    let maxIters = 35;
+    let maxIters = 60;
 
     for (let iter = 0; iter < maxIters; iter++) {
       const seedIdx = pickRandomUnassigned(unassigned, prng, totalTriangles);
@@ -65,7 +68,7 @@ export function extractCylindersRANSACInternal(
       const p0: Point3D = [centroids[s3], centroids[s3 + 1], centroids[s3 + 2]];
       const n0: Vector3D = [normals[s3], normals[s3 + 1], normals[s3 + 2]];
 
-      const neighborIdx = pickLocalizedNeighborBuffers(unassigned, centroids, p0, 30.0);
+      const neighborIdx = pickLocalizedNeighborBuffers(unassigned, centroids, p0, 35.0, spatialGrid);
       if (neighborIdx < 0) continue;
 
       const n3 = neighborIdx * 3;

@@ -10,11 +10,11 @@ import { Vector3D } from '../../types/geometry.js';
  */
 export function formatStepFloat(val: number, decimals: number = 5): string {
   const cutoff = 0.5 * Math.pow(10, -decimals);
-  if (Math.abs(val) < cutoff || Object.is(val, -0)) {
+  if (!Number.isFinite(val) || Math.abs(val) < cutoff || Object.is(val, -0)) {
     return (0).toFixed(decimals);
   }
   const str = val.toFixed(decimals);
-  return str.startsWith('-0.00') && parseFloat(str) === 0 ? (0).toFixed(decimals) : str;
+  return str.startsWith('-') && parseFloat(str) === 0 ? (0).toFixed(decimals) : str;
 }
 
 export interface OrthonormalBasis {

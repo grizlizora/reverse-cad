@@ -49,7 +49,9 @@ export function scoreCylinderCandidate(
   const rMax = targetRadius + toleranceMm;
   const rMinSq = rMin * rMin;
   const rMaxSq = rMax * rMax;
-  const sinAngSq = Math.sin(angularToleranceRad) * Math.sin(angularToleranceRad);
+  const effectiveAngTol = Math.max(0.45, angularToleranceRad);
+  const sinAng = Math.sin(effectiveAngTol);
+  const sinAngSq = sinAng * sinAng;
 
   for (let t = 0; t < triCount; t++) {
     if (unassigned[t] === 0) continue;

@@ -65,17 +65,17 @@ export function classifyFacetPlanes(
     }
 
     let snx = nx, sny = ny, snz = nz;
-    if (Math.abs(snx) > 0.995) { snx = Math.sign(snx); sny = 0; snz = 0; }
-    else if (Math.abs(sny) > 0.995) { snx = 0; sny = Math.sign(sny); snz = 0; }
-    else if (Math.abs(snz) > 0.995) { snx = 0; sny = 0; snz = Math.sign(snz); }
+    if (Math.abs(snx) > 0.9995) { snx = Math.sign(snx); sny = 0; snz = 0; }
+    else if (Math.abs(sny) > 0.9995) { snx = 0; sny = Math.sign(sny); snz = 0; }
+    else if (Math.abs(snz) > 0.9995) { snx = 0; sny = 0; snz = Math.sign(snz); }
 
     const dist = snx * cx + sny * cy + snz * cz;
 
-    // Compact integer quantization keys (step 20 for normal, step 5 for distance)
-    const qnx = Math.round(snx * 20);
-    const qny = Math.round(sny * 20);
-    const qnz = Math.round(snz * 20);
-    const qdist = Math.round(dist * 5);
+    // High-precision quantization keys (step 100 for normal ~0.5 deg, step 200 for distance 0.005 mm)
+    const qnx = Math.round(snx * 100);
+    const qny = Math.round(sny * 100);
+    const qnz = Math.round(snz * 100);
+    const qdist = Math.round(dist * 200);
     const key = `${qnx}_${qny}_${qnz}:${qdist}`;
 
     let planeIdx = keyToPlaneIdx.get(key);
