@@ -6,7 +6,7 @@ import { Piscina } from 'piscina';
 import { MessageChannel } from 'worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { resolvePipelineWorkerPath } from '../mcp/worker/mcp-pool.js';
 import { PipelineOptions, PipelineResult, PipelineTaskPayload, ProgressUpdate } from '../types/worker.js';
 import { processPipelineTask } from '../worker/pipeline-worker.js';
 import { TerminalRenderer } from '../tui/terminal-renderer.js';
@@ -32,8 +32,7 @@ export interface WorkerPoolContext {
  */
 export function initializeWorkerPool(baseConcurrency: number, heapPerWorkerMb: number): Piscina | null {
   try {
-    const workerScriptUrl = new URL('../worker/pipeline-worker.js', import.meta.url);
-    const workerScriptPath = fileURLToPath(workerScriptUrl);
+    const workerScriptPath = resolvePipelineWorkerPath();
     if (fs.existsSync(workerScriptPath)) {
       return new Piscina({
         filename: workerScriptPath,

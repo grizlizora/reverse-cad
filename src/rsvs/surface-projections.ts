@@ -11,9 +11,6 @@ import {
   ConeSurface,
   TorusSurface
 } from '../types/geometry.js';
-import { projectPointToTriangle, distancePointToTriangleDirect } from './triangle-projection.js';
-
-export { projectPointToTriangle, distancePointToTriangleDirect };
 
 export interface SurfaceProjectionResult {
   distance: number;

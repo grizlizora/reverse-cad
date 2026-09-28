@@ -45,15 +45,19 @@ export class MemoryCircuitBreaker {
       this.isCircuitOpen = false;
     }
 
-    // Check V8 Heap pressure
+    // Check V8 Heap and External Buffer pressure
     try {
       const heapStats = v8.getHeapStatistics();
       const heapRatio = heapStats.used_heap_size / heapStats.heap_size_limit;
-      if (heapRatio > 0.90) {
+      const mem = process.memoryUsage();
+      const externalMb = mem.external / (1024 * 1024);
+      
+      // If external memory (TypedArrays/ArrayBuffers) exceeds 2048 MB or heap ratio > 90%
+      if (heapRatio > 0.90 || externalMb > 2048) {
         this.tripCircuit(3000);
         return {
           canExecute: false,
-          reason: `V8 Heap utilization at ${(heapRatio * 100).toFixed(1)}% of limit. Cooling down...`,
+          reason: `Memory pressure critical (Heap: ${(heapRatio * 100).toFixed(1)}%, External: ${externalMb.toFixed(0)}MB). Cooling down...`,
           backoffMs: 3000
         };
       }

@@ -16,9 +16,10 @@ export * from './buffer-compactor.js';
 
 export interface DecimationOptions {
   targetReductionRatio?: number;    // e.g. 0.5 = reduce to 50%
-  maxTrianglesThreshold?: number;   // Decimate only if > threshold (default 800,000)
+  maxTrianglesThreshold?: number;   // Decimate only if > threshold (default 35,000)
   featureAngleDeg?: number;         // Preserve sharp edges > featureAngleDeg (default 8°)
   curvatureAngleDeg?: number;       // Preserve fillets/chamfers: 1-ring normal spread > deg (default 10°)
+  fineFeatureAngleDeg?: number;     // Preserve fine feature chords (default 4°)
   coplanarAngleDeg?: number;        // Collapse only internal coplanar edges with angle < deg (default 0.5°)
   keepoutZones?: KeepoutBox[];      // Geometric keepout zones (notches, pads, holes)
 }
@@ -28,53 +29,51 @@ export interface DecimationOptions {
  * (ratchet notches, pad cutouts, fillets, chamfers, thin walls, stampings).
  */
 export function decimateMesh(mesh: RawMesh, options: DecimationOptions = {}): RawMesh {
-  const threshold = options.maxTrianglesThreshold ?? 800000;
+  const threshold = options.maxTrianglesThreshold ?? 35000;
   if (mesh.triangleCount <= threshold) {
     // Triangle count is already within budget, keep original 100% mesh fidelity
     return mesh;
   }
 
-  const featureAngleRad = ((options.featureAngleDeg ?? 8) * Math.PI) / 180.0;
-  const curvatureAngleRad = ((options.curvatureAngleDeg ?? 10) * Math.PI) / 180.0;
+  const featureAngleRad = ((options.featureAngleDeg ?? 15) * Math.PI) / 180.0;
+  const curvatureAngleRad = ((options.curvatureAngleDeg ?? 15) * Math.PI) / 180.0;
+  const fineFeatureAngleRad = ((options.fineFeatureAngleDeg ?? 15.0) * Math.PI) / 180.0;
   const coplanarAngleRad = ((options.coplanarAngleDeg ?? 0.5) * Math.PI) / 180.0;
-  const targetRatio = options.targetReductionRatio ?? 0.5;
-  const targetTriangles = Math.max(threshold, Math.floor(mesh.triangleCount * targetRatio));
+  const targetTriangles = options.targetReductionRatio !== undefined
+    ? Math.max(threshold, Math.floor(mesh.triangleCount * options.targetReductionRatio))
+    : threshold;
 
-  const numVertices = mesh.vertexCount;
+  let currentMesh = mesh;
+  const maxPasses = 4;
 
-  // 1. Build CSR (Compressed Sparse Row) and compute face normals
-  const csr = buildMeshCSR(mesh);
+  for (let pass = 0; pass < maxPasses; pass++) {
+    if (currentMesh.triangleCount <= targetTriangles) break;
 
-  // 2. Build 5-Tier Feature Shield
-  const isVertexLocked = buildFeatureShield(mesh, csr, {
-    featureAngleRad,
-    curvatureAngleRad,
-    keepoutZones: options.keepoutZones
-  });
+    // 1. Build CSR (Compressed Sparse Row) and compute face normals
+    const csr = buildMeshCSR(currentMesh);
 
-  // Check locked ratio
-  let lockedCount = 0;
-  for (let v = 0; v < numVertices; v++) {
-    if (isVertexLocked[v]) lockedCount++;
+    // 2. Build 5-Tier Feature Shield
+    const isVertexLocked = buildFeatureShield(currentMesh, csr, {
+      featureAngleRad,
+      curvatureAngleRad,
+      fineFeatureAngleRad,
+      keepoutZones: options.keepoutZones
+    });
+
+    // 3. Safe coplanar & crease-tangent interior edge collapse
+    const { remap, collapsedCount } = collapseCoplanarEdges(
+      currentMesh,
+      csr,
+      isVertexLocked,
+      coplanarAngleRad,
+      targetTriangles
+    );
+
+    if (collapsedCount === 0) break;
+
+    // 4. Compact mesh buffers
+    currentMesh = compactDecimatedBuffers(currentMesh, remap);
   }
 
-  if (lockedCount > numVertices * 0.85) {
-    return mesh;
-  }
-
-  // 3. Safe coplanar interior edge collapse
-  const { remap, collapsedCount } = collapseCoplanarEdges(
-    mesh,
-    csr,
-    isVertexLocked,
-    coplanarAngleRad,
-    targetTriangles
-  );
-
-  if (collapsedCount === 0) {
-    return mesh;
-  }
-
-  // 4. Compact mesh buffers
-  return compactDecimatedBuffers(mesh, remap);
+  return currentMesh;
 }

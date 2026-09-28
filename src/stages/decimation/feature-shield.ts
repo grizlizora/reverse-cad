@@ -13,6 +13,7 @@ export interface KeepoutBox {
 export interface ShieldOptions {
   featureAngleRad: number;
   curvatureAngleRad: number;
+  fineFeatureAngleRad?: number;
   keepoutZones?: KeepoutBox[];
 }
 
@@ -32,7 +33,7 @@ export function buildFeatureShield(
 
   const cosFeature = Math.cos(options.featureAngleRad);
   const cosCurvature = Math.cos(options.curvatureAngleRad);
-  const cosFineFeature = Math.cos((0.8 * Math.PI) / 180.0);
+  const cosFineFeature = Math.cos(options.fineFeatureAngleRad ?? ((4.0 * Math.PI) / 180.0));
 
   // Tier A: Boundary edges and non-manifold connections
   // Tier B: Sharp CAD feature edges (dihedral angle > featureAngleRad)

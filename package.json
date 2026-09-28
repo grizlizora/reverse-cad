@@ -17,7 +17,8 @@
     "test": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/test/run-tests.js",
     "test:dev": "bun run src/test/run-tests.ts",
     "benchmark": "node --max-old-space-size=8192 --stack-size=8192 --expose-gc ./dist/test/benchmark-latency.js",
-    "test:freecad": "node --max-old-space-size=8192 --stack-size=8192 ./dist/test/test-freecad-validation.js"
+    "test:freecad": "node --max-old-space-size=8192 --stack-size=8192 ./dist/test/test-freecad-validation.js",
+    "test:occ": "node --max-old-space-size=8192 --stack-size=8192 ./dist/test/test-analytical-occ-validation.js"
   },
   "keywords": [
     "3d",

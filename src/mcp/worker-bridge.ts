@@ -5,7 +5,7 @@
 import { Piscina } from 'piscina';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { resolvePipelineWorkerPath } from './worker/mcp-pool.js';
 import { TOOLS_MANIFEST, McpToolDeclaration } from './manifest/cad-tools-manifest.js';
 import { CadWorkerTaskPayload, runCadMcpTask } from '../worker/pipeline-worker.js';
 
@@ -45,8 +45,7 @@ export class McpWorkerBridge {
     if (!this.options.enableWorkerPool) return;
 
     try {
-      const workerScriptUrl = new URL('../worker/pipeline-worker.js', import.meta.url);
-      const workerScriptPath = fileURLToPath(workerScriptUrl);
+      const workerScriptPath = resolvePipelineWorkerPath();
       if (fs.existsSync(workerScriptPath)) {
         this.pool = new Piscina({
           filename: workerScriptPath,

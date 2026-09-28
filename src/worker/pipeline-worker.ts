@@ -1,7 +1,3 @@
-// ==============================================================================
-// src/worker/pipeline-worker.ts — Worker Processor Executing Stages 1 to 7 + RSVS
-// ==============================================================================
-
 import { PipelineTaskPayload, PipelineResult, ProgressUpdate } from '../types/worker.js';
 import { readSTL } from '../stages/stage1-read.js';
 import { decimateMesh } from '../stages/stage2-decimate.js';
@@ -12,10 +8,13 @@ import { exportBRepStep } from '../stages/stage6-brep-step.js';
 import { exportCADJson } from '../stages/stage7-export-json.js';
 import { runRSVS } from '../rsvs/rsvs-suite.js';
 import { alignMeshForCadViewer } from '../utils/math3d.js';
+import { PipelineContext } from './pipeline-context.js';
+import { WorkerAbortMonitor } from './worker-abort-monitor.js';
+import { StageProgressEmitter, yieldToEventLoop, ProgressCallback } from './stage-runner.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
-export type ProgressCallback = (update: ProgressUpdate) => void;
+export { ProgressCallback };
 
 /**
  * Executes the complete 7-stage reverse-engineering pipeline on a single model.
@@ -24,97 +23,79 @@ export async function processPipelineTask(
   payload: PipelineTaskPayload,
   onProgress?: ProgressCallback
 ): Promise<PipelineResult> {
-  const startTime = Date.now();
-  const baseName = path.basename(payload.filePath, path.extname(payload.filePath));
+  const ctx = new PipelineContext(payload);
+  const monitor = new WorkerAbortMonitor(payload.taskId, (payload as any).sharedAbortBuffer);
+  const progressEmitter = new StageProgressEmitter(payload, ctx.startTime, onProgress);
+  const emit = progressEmitter.emit.bind(progressEmitter);
   const outDir = payload.options.outDir;
-
-  const emit = (stageNumber: number, stage: ProgressUpdate['stage'], percent: number) => {
-    const update: ProgressUpdate = {
-      type: 'PROGRESS',
-      taskId: payload.taskId,
-      filePath: payload.filePath,
-      stage,
-      stageNumber,
-      totalStages: 7,
-      percent,
-      elapsedMs: Date.now() - startTime
-    };
-
-    if (payload.progressPort && typeof payload.progressPort.postMessage === 'function') {
-      try {
-        payload.progressPort.postMessage(update);
-      } catch {
-        // Port may be closed
-      }
-    }
-
-    if (onProgress) {
-      onProgress(update);
-    }
-  };
+  const baseName = ctx.baseName;
 
   try {
     // -------------------------------------------------------------------------
     // Stage 1: Read & Index STL Mesh
     // -------------------------------------------------------------------------
+    monitor.checkAbort('1_READ_INTAKE');
     emit(1, '1_READ_INTAKE', 10);
-    let rawMesh: any = await readSTL(payload.rawBuffer || payload.filePath);
-    const trianglesIn = rawMesh.triangleCount;
+    ctx.rawMesh = await readSTL(payload.rawBuffer || payload.filePath);
+    const trianglesIn = ctx.rawMesh.triangleCount;
 
     // Automatic CAD Viewer coordinate frame alignment (Z-up STL -> Y-up CAD):
-    // Maps STL Top (+Z) -> CAD Top (+Y), STL Front (-Y) -> CAD Front (+Z)
-    // Ensures all 6 orthogonal views (Top/Bottom/Front/Back/Left/Right) match 1:1
-    // with original STL in Autodesk Viewer & CAD systems without manual reorientation.
     if (payload.options.alignCadViewer === true) {
-      alignMeshForCadViewer(rawMesh);
+      alignMeshForCadViewer(ctx.rawMesh);
     }
+    await yieldToEventLoop(monitor, '1_READ_INTAKE');
 
     // -------------------------------------------------------------------------
     // Stage 2: QEM Decimation (if oversized > 800,000 triangles)
     // -------------------------------------------------------------------------
+    monitor.checkAbort('2_QEM_DECIMATE');
     emit(2, '2_QEM_DECIMATE', 25);
-    let decimatedMesh: any = rawMesh;
-    if (payload.options.decimate !== false && rawMesh.triangleCount > (payload.options.maxTrianglesThreshold ?? 800000)) {
-      decimatedMesh = decimateMesh(rawMesh, {
-        maxTrianglesThreshold: payload.options.maxTrianglesThreshold ?? 800000,
-        featureAngleDeg: 8,
-        curvatureAngleDeg: 10,
-        coplanarAngleDeg: 0.5
+    ctx.decimatedMesh = ctx.rawMesh;
+    if (payload.options.decimate !== false && ctx.rawMesh!.triangleCount > (payload.options.maxTrianglesThreshold ?? 35000)) {
+      ctx.decimatedMesh = decimateMesh(ctx.rawMesh!, {
+        maxTrianglesThreshold: payload.options.maxTrianglesThreshold ?? 35000,
+        featureAngleDeg: 15,
+        curvatureAngleDeg: 15,
+        fineFeatureAngleDeg: 15.0,
+        coplanarAngleDeg: 2.0
       });
     }
+    await yieldToEventLoop(monitor, '2_QEM_DECIMATE');
 
     // -------------------------------------------------------------------------
     // Stage 3: Topology Sanitization & Cavity Shell Decomposition
     // -------------------------------------------------------------------------
+    monitor.checkAbort('3_TOPOLOGY_SANITIZE');
     emit(3, '3_TOPOLOGY_SANITIZE', 40);
-    const sanitizeReport = sanitizeTopology(decimatedMesh);
+    ctx.sanitizeReport = sanitizeTopology(ctx.decimatedMesh!);
 
     // Explicitly unlink intermediate large buffers for V8 GC reclamation
-    rawMesh = null;
-    decimatedMesh = null;
+    ctx.rawMesh = null;
+    ctx.decimatedMesh = null;
+    await yieldToEventLoop(monitor, '3_TOPOLOGY_SANITIZE');
 
     // -------------------------------------------------------------------------
     // Stage 4: Curvature Tensor & Localized Octree RANSAC
     // Stage 5: Engineering Feature Profiling (Holes, Threads, Cavities, Clearances)
     // -------------------------------------------------------------------------
-    let surfaces: any[] = [];
-    let profiling: any = { holes: [], threads: [], cavities: [], kinematicClearances: [] };
-    let isFacetedFallback = false;
-
+    monitor.checkAbort('4_SURFACE_SEGMENT');
     try {
       emit(4, '4_SURFACE_SEGMENT', 60);
-      surfaces = segmentSurfaces(sanitizeReport.cleanedMesh);
+      ctx.surfaces = segmentSurfaces(ctx.sanitizeReport.cleanedMesh);
+      await yieldToEventLoop(monitor, '4_SURFACE_SEGMENT');
 
+      monitor.checkAbort('5_PROFILE_FEATURES');
       emit(5, '5_PROFILE_FEATURES', 75);
-      profiling = profileFeatures(sanitizeReport.cleanedMesh, surfaces, sanitizeReport.shells, {
+      ctx.profiling = profileFeatures(ctx.sanitizeReport.cleanedMesh, ctx.surfaces, ctx.sanitizeReport.shells, {
         inferTapDrillThreads: payload.options.inferTapDrillThreads
       });
+      await yieldToEventLoop(monitor, '5_PROFILE_FEATURES');
     } catch (segmentErr: any) {
       // Graceful Degradation: If RANSAC or profiling fails on non-manifold/pathological geometry,
       // fallback to guaranteed faceted solid B-Rep export without dropping the task.
-      isFacetedFallback = true;
-      surfaces = [];
-      profiling = { holes: [], threads: [], cavities: [], kinematicClearances: [] };
+      ctx.isFacetedFallback = true;
+      ctx.surfaces = [];
+      ctx.profiling = { holes: [], threads: [], cavities: [], kinematicClearances: [] };
       emit(4, '4_SURFACE_SEGMENT', 100);
       emit(5, '5_PROFILE_FEATURES', 100);
     }
@@ -122,84 +103,70 @@ export async function processPipelineTask(
     // -------------------------------------------------------------------------
     // Stage 6: STEP AP242 B-Rep Solid Synthesis
     // -------------------------------------------------------------------------
+    monitor.checkAbort('6_BREP_STEP_SYNTH');
     emit(6, '6_BREP_STEP_SYNTH', 88);
-    let stepRes: any;
     let stepFilePath: string | undefined;
     if (!payload.options.jsonOnly) {
-      stepRes = await exportBRepStep(
-        sanitizeReport.cleanedMesh,
-        surfaces,
-        profiling.threads,
+      ctx.stepResult = await exportBRepStep(
+        ctx.sanitizeReport.cleanedMesh,
+        ctx.surfaces,
+        ctx.profiling.threads,
         outDir,
         baseName,
-        sanitizeReport.shells,
+        ctx.sanitizeReport.shells,
         undefined,
-        profiling.kinematicJoints
+        ctx.profiling.kinematicJoints
       );
-      stepFilePath = stepRes.stepFilePath;
+      stepFilePath = ctx.stepResult.stepFilePath;
     }
+    await yieldToEventLoop(monitor, '6_BREP_STEP_SYNTH');
 
     // -------------------------------------------------------------------------
     // Stage 7: Two-Tier JSON Export & RSVS Quality Verification
     // -------------------------------------------------------------------------
+    monitor.checkAbort('7_EXPORT_JSON_VERIFY');
     emit(7, '7_EXPORT_JSON_VERIFY', 95);
     let jsonSummaryPath: string | undefined;
     let jsonTopologyPath: string | undefined;
     let summaryData: any;
 
     if (!payload.options.stepOnly) {
-      const jsonRes = await exportCADJson(
-        sanitizeReport.cleanedMesh,
-        surfaces,
-        sanitizeReport.shells,
-        profiling,
+      ctx.jsonResult = await exportCADJson(
+        ctx.sanitizeReport.cleanedMesh,
+        ctx.surfaces,
+        ctx.sanitizeReport.shells,
+        ctx.profiling,
         outDir,
         baseName,
-        stepRes?.bRepSynthesis
+        ctx.stepResult?.bRepSynthesis
       );
-      jsonSummaryPath = jsonRes.summaryPath;
-      jsonTopologyPath = jsonRes.topologyPath;
-      summaryData = jsonRes.summaryData;
-      if (isFacetedFallback && summaryData) {
+      jsonSummaryPath = ctx.jsonResult.summaryPath;
+      jsonTopologyPath = ctx.jsonResult.topologyPath;
+      summaryData = ctx.jsonResult.summaryData;
+      if (ctx.isFacetedFallback && summaryData) {
         summaryData.conversion_mode = 'FACETED_SOLID_FALLBACK';
       }
     }
 
-    let verificationReport: any;
-    if (payload.options.verify && !isFacetedFallback) {
-      verificationReport = await runRSVS(
-        sanitizeReport.cleanedMesh,
-        surfaces,
-        sanitizeReport.shells,
-        profiling,
+    if (payload.options.verify && !ctx.isFacetedFallback) {
+      ctx.rsvsResult = await runRSVS(
+        ctx.sanitizeReport.cleanedMesh,
+        ctx.surfaces,
+        ctx.sanitizeReport.shells,
+        ctx.profiling,
         {
           outputDir: outDir,
           baseFileName: baseName,
-          isClosedSolid: sanitizeReport.isWatertight,
-          openEdgesCount: sanitizeReport.openEdgesCount,
-          degenerateCount: sanitizeReport.degenerateTrianglesRemoved,
-          eulerCharacteristic: sanitizeReport.eulerCharacteristic,
+          isClosedSolid: ctx.sanitizeReport.isWatertight,
+          openEdgesCount: ctx.sanitizeReport.openEdgesCount,
+          degenerateCount: ctx.sanitizeReport.degenerateTrianglesRemoved,
+          eulerCharacteristic: ctx.sanitizeReport.eulerCharacteristic,
           heatmapMode: payload.options.heatmapMode
         }
       );
     }
 
     emit(7, '7_EXPORT_JSON_VERIFY', 100);
-
-    // Close transferred MessagePort inside worker thread to avoid handle leakage
-    if (payload.progressPort && typeof payload.progressPort.close === 'function') {
-      try { payload.progressPort.close(); } catch {}
-    }
-
-    // Adaptive V8 GC invocation: run only if heapUsed exceeds 300MB
-    if (typeof (global as any).gc === 'function') {
-      try {
-        const mem = process.memoryUsage();
-        if (mem.heapUsed > 300 * 1024 * 1024) {
-          (global as any).gc();
-        }
-      } catch {}
-    }
 
     return {
       taskId: payload.taskId,
@@ -209,31 +176,28 @@ export async function processPipelineTask(
       jsonSummaryPath,
       jsonTopologyPath,
       summaryData,
-      verificationReport,
-      elapsedMs: Date.now() - startTime,
+      verificationReport: ctx.rsvsResult,
+      elapsedMs: ctx.elapsedMs,
       trianglesIn,
-      trianglesProcessed: sanitizeReport.cleanedMesh.triangleCount,
-      surfacesExtracted: surfaces.length
+      trianglesProcessed: ctx.sanitizeReport.cleanedMesh.triangleCount,
+      surfacesExtracted: ctx.surfaces.length
     };
   } catch (err: any) {
-    if (payload.progressPort && typeof payload.progressPort.close === 'function') {
-      try { payload.progressPort.close(); } catch {}
-    }
-    if (typeof (global as any).gc === 'function') {
-      try {
-        (global as any).gc();
-      } catch {}
-    }
     return {
       taskId: payload.taskId,
       filePath: payload.filePath,
       success: false,
       error: err?.stack || err?.message || String(err),
-      elapsedMs: Date.now() - startTime,
+      elapsedMs: ctx.elapsedMs,
       trianglesIn: 0,
       trianglesProcessed: 0,
       surfacesExtracted: 0
     };
+  } finally {
+    if (payload.progressPort && typeof payload.progressPort.close === 'function') {
+      try { payload.progressPort.close(); } catch {}
+    }
+    ctx.dispose();
   }
 }
 
@@ -245,6 +209,10 @@ export interface CadWorkerTaskPayload {
   outDir?: string;
   baseName?: string;
   threshold?: number;
+  options?: {
+    alignCadViewer?: boolean;
+    [key: string]: any;
+  };
 }
 
 /**
@@ -333,7 +301,9 @@ export async function runCadMcpTask(payload: CadWorkerTaskPayload): Promise<any>
       case 'CONVERT_STEP': {
         await fs.promises.mkdir(outDir, { recursive: true });
         const raw = await readSTL(payload.filePath);
-        alignMeshForCadViewer(raw);
+        if (payload.options?.alignCadViewer === true) {
+          alignMeshForCadViewer(raw);
+        }
         const decimated = decimateMesh(raw, { maxTrianglesThreshold: threshold });
         const sanitized = sanitizeTopology(decimated);
         const surfaces = segmentSurfaces(sanitized.cleanedMesh);

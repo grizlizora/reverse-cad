@@ -54,6 +54,24 @@ export function collapseCoplanarEdges(
     vTrisLists[v] = list;
   }
 
+  // Pre-identify entrance chamfer vertices (slope 30°-60° bordering a planar face)
+  const isChamferVertex = new Uint8Array(numVertices);
+  for (let v = 0; v < numVertices; v++) {
+    const start = vOffsets[v];
+    const end = vOffsets[v + 1];
+    let hasChamferSlope = false;
+    let hasFlatAdjacent = false;
+    for (let i = start; i < end; i++) {
+      const t = vTris[i] * 3;
+      const nz = Math.abs(faceNormals[t + 2]);
+      if (nz >= 0.45 && nz <= 0.88) hasChamferSlope = true;
+      if (nz >= 0.98) hasFlatAdjacent = true;
+    }
+    if (hasChamferSlope && hasFlatAdjacent) {
+      isChamferVertex[v] = 1;
+    }
+  }
+
   let remainingTriangles = numTriangles;
 
   const wouldInvertNormal = (vTarget: number, vRemove: number): boolean => {
@@ -149,8 +167,6 @@ export function collapseCoplanarEdges(
     const rootB = findRoot(vB);
     if (rootA === rootB) continue;
 
-    if (isVertexLocked[rootA] || isVertexLocked[rootB]) continue;
-
     const t0 = faces[0] * 3;
     const t1 = faces[1] * 3;
     const dotVal =
@@ -158,18 +174,78 @@ export function collapseCoplanarEdges(
       faceNormals[t0 + 1] * faceNormals[t1 + 1] +
       faceNormals[t0 + 2] * faceNormals[t1 + 2];
 
-    if (dotVal < cosCoplanar) continue;
+    const dx = positions[rootA * 3] - positions[rootB * 3];
+    const dy = positions[rootA * 3 + 1] - positions[rootB * 3 + 1];
+    const dz = positions[rootA * 3 + 2] - positions[rootB * 3 + 2];
+    const edgeLenSq = dx * dx + dy * dy + dz * dz;
 
-    if (wouldInvertNormal(rootA, rootB)) continue;
+    let targetV = -1;
+    let removeV = -1;
 
-    remap[rootB] = rootA;
+    const lockedA = isVertexLocked[rootA];
+    const lockedB = isVertexLocked[rootB];
+    const isChamfer = isChamferVertex[rootA] || isChamferVertex[rootB];
+
+    // Branch 1: Strictly coplanar (flat walls, flat faces, planar pockets)
+    if (dotVal >= cosCoplanar) {
+      if (!lockedA && !lockedB) {
+        targetV = rootA;
+        removeV = rootB;
+      } else if (lockedA && !lockedB) {
+        if (edgeLenSq <= 0.64) {
+          targetV = rootA;
+          removeV = rootB;
+        }
+      } else if (!lockedA && lockedB) {
+        if (edgeLenSq <= 0.64) {
+          targetV = rootB;
+          removeV = rootA;
+        }
+      } else if (lockedA && lockedB) {
+        if (edgeLenSq <= 0.64) {
+          targetV = rootA;
+          removeV = rootB;
+        }
+      }
+    }
+    // NEVER collapse curved entrance chamfers to maintain 100% circular quad symmetry
+    else if (isChamfer) {
+      continue;
+    }
+    // Branch 2: Smooth flank surface collapse (curved helical flank walls)
+    // ONLY allowed when at least one vertex is UNLOCKED (interior facet vertex).
+    // NEVER collapse when BOTH vertices are locked (protects chamfer circles, tooth crests, tooth roots)!
+    else if (dotVal >= Math.cos((5.0 * Math.PI) / 180.0) && edgeLenSq <= 0.36) {
+      if (!lockedA && !lockedB) {
+        targetV = rootA;
+        removeV = rootB;
+      } else if (lockedA && !lockedB) {
+        targetV = rootA;
+        removeV = rootB;
+      } else if (!lockedA && lockedB) {
+        targetV = rootB;
+        removeV = rootA;
+      }
+    }
+    // Branch 3: Sharp crease ridge micro-collapse (thread crests & roots <= 0.40mm)
+    // Only collapses adjacent micro-segments to prevent tooth shearing
+    else if (lockedA && lockedB && dotVal < 0.90 && edgeLenSq <= 0.16) {
+      targetV = rootA;
+      removeV = rootB;
+    }
+
+    if (targetV === -1 || removeV === -1) continue;
+
+    if (wouldInvertNormal(targetV, removeV)) continue;
+
+    remap[removeV] = targetV;
     remainingTriangles -= 2;
 
-    const listA = vTrisLists[rootA];
-    const listB = vTrisLists[rootB];
-    if (listA && listB) {
-      for (let k = 0; k < listB.length; k++) {
-        listA.push(listB[k]);
+    const listTarget = vTrisLists[targetV];
+    const listRemove = vTrisLists[removeV];
+    if (listTarget && listRemove) {
+      for (let k = 0; k < listRemove.length; k++) {
+        listTarget.push(listRemove[k]);
       }
     }
   }
