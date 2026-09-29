@@ -21,8 +21,6 @@ export function normalizeMaterialKey(raw: string): string {
 export const MATERIAL_ALIASES: ReadonlyMap<string, string> = new Map<string, string>([
   // Glass & Optics
   ['glass', 'glass'],
-  ['sklo', 'glass'],
-  ['скло', 'glass'],
   ['glass_clear', 'glass'],
   ['borosilicate', 'glass'],
   ['pyrex', 'glass'],
@@ -48,7 +46,6 @@ export const MATERIAL_ALIASES: ReadonlyMap<string, string> = new Map<string, str
   ['ss316l', 'steel'],
   ['ss304', 'steel'],
   ['metal', 'steel'],
-  ['сталь', 'steel'],
   ['iron', 'mild_steel'],
   ['carbon_steel', 'mild_steel'],
   ['aisi_1020', 'mild_steel'],
@@ -57,17 +54,13 @@ export const MATERIAL_ALIASES: ReadonlyMap<string, string> = new Map<string, str
   ['aluminium', 'aluminum'],
   ['al6061', 'aluminum'],
   ['6061', 'aluminum'],
-  ['алюміній', 'aluminum'],
   ['bronze', 'brass'],
   ['c36000', 'brass'],
-  ['латунь', 'brass'],
   ['cu', 'copper'],
   ['c11000', 'copper'],
-  ['мідь', 'copper'],
   ['ti', 'titanium'],
   ['ti6al4v', 'titanium'],
   ['grade_5', 'titanium'],
-  ['титан', 'titanium'],
 
   // Polymers & Elastomers
   ['plastic', 'pla'],
@@ -84,14 +77,11 @@ export const MATERIAL_ALIASES: ReadonlyMap<string, string> = new Map<string, str
   ['gasket', 'rubber'],
   ['seal', 'rubber'],
   ['o_ring', 'rubber'],
-  ['гума', 'rubber'],
   ['silicone_rubber', 'silicone'],
-  ['силікон', 'silicone'],
 
   // Composites
   ['carbon', 'carbon_fiber'],
   ['carb', 'carbon_fiber'],
   ['car', 'carbon_fiber'],
-  ['cfrp', 'carbon_fiber'],
-  ['карбон', 'carbon_fiber']
+  ['cfrp', 'carbon_fiber']
 ]);

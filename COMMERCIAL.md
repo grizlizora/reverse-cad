@@ -68,7 +68,7 @@ ReverseCAD incorporates deterministic geometric watermarking and metadata attrib
 
 If an enterprise or commercial entity utilizes ReverseCAD without an active, paid Commercial License:
 
-1. **Pre-Trial Formal Demand (Досудова вимога):**
+1. **Pre-Trial Formal Demand:**
    Our intellectual property counsel will issue a formal cease-and-desist demand requiring:
    - Immediate payment of the retroactive annual license fee ($10,000 USD/year) for all elapsed periods of use.
    - Reimbursement of all associated legal and investigative expenses.

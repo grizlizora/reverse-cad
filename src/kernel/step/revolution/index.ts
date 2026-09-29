@@ -4,3 +4,4 @@
 
 export * from './revolution-zband-analyzer.js';
 export * from './revolution-face-synthesizer.js';
+export * from './revolution-shell-integrator.js';

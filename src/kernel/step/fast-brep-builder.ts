@@ -117,6 +117,7 @@ export async function buildFastMultiBodyBRep(
       for (let f = 0; f < bandFaceIds.length; f++) shellFaceIds.push(bandFaceIds[f]);
     }
 
+
     for (let c = 0; c < clusters.length; c++) {
       await yieldCtrl.maybeYield();
       const clusterFaceIds = await synthesizeClusterFaces(

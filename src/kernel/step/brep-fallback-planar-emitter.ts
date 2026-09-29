@@ -49,8 +49,10 @@ export async function emitFallbackQuadsAndTris(
     const p1x = stepVerticesX[v1], p1y = stepVerticesY[v1], p1z = stepVerticesZ[v1];
     const p2x = stepVerticesX[v2], p2y = stepVerticesY[v2], p2z = stepVerticesZ[v2];
     let planeId: string | undefined;
-
-    if (surfaceMapping?.getOrCreateFacetPlane) {
+    const existingSurfId = surfaceMapping?.triangleToSurfaceId?.get(tA);
+    if (existingSurfId && existingSurfId.startsWith('#')) {
+      planeId = existingSurfId;
+    } else if (surfaceMapping?.getOrCreateFacetPlane) {
       if (planeBlockBuffer.length > 0) {
         await writer.writeBlock(planeBlockBuffer);
         planeBlockBuffer = '';
@@ -99,7 +101,8 @@ export async function emitFallbackQuadsAndTris(
 
   for (let i = 0; i < pendingFaces.length; i++) {
     const f = pendingFaces[i];
-    faceIds.push(await emitter.emitTriangleFace(f.v0, f.v1, f.v2, f.planeId, true));
+    const sameSense = surfaceMapping?.triangleSameSense ? surfaceMapping.triangleSameSense[f.tA] === 1 : true;
+    faceIds.push(await emitter.emitTriangleFace(f.v0, f.v1, f.v2, f.planeId, sameSense));
   }
 
   return faceIds;

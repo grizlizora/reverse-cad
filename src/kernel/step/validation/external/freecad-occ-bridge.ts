@@ -25,10 +25,12 @@ export class FreecadOccBridge {
       if (fs.existsSync(p)) return p;
     }
 
-    // 2. Linux paths
+    // 2. Linux paths (Fedora, Debian, Ubuntu, Flatpak & Snap)
     const linuxPaths = [
       '/usr/bin/freecadcmd',
       '/usr/local/bin/freecadcmd',
+      '/usr/bin/freecad',
+      '/app/bin/FreeCADCmd',
       '/snap/bin/freecad.cmd',
       '/snap/bin/freecad'
     ];

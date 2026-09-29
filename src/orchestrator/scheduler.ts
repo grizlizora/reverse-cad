@@ -90,7 +90,7 @@ export async function runScheduler(inputPath: string, options: PipelineOptions):
 
   // Display all generated files with exact sizes and purpose
   if (passedCount > 0) {
-    console.log(chalk.bold.cyan(`\n📦 Згенеровані вихідні файли:`));
+    console.log(chalk.bold.cyan(`\n📦 Generated Output Artifacts:`));
     for (const r of results) {
       if (r.success) {
         const base = path.basename(r.filePath, path.extname(r.filePath));
@@ -105,14 +105,14 @@ export async function runScheduler(inputPath: string, options: PipelineOptions):
         };
 
         registerArtifact(r.stepFilePath, '3D CAD Solid B-Rep');
-        registerArtifact(r.jsonSummaryPath, 'Інженерне резюме (<1200 tok)');
-        registerArtifact(r.jsonTopologyPath, 'B-Rep топологія');
+        registerArtifact(r.jsonSummaryPath, 'Engineering features summary (<1200 tok)');
+        registerArtifact(r.jsonTopologyPath, 'B-Rep topology graph');
 
         const repPath = path.join(options.outDir, `${base}.verification_report.json`);
-        registerArtifact(repPath, 'RSVS аудит якості');
+        registerArtifact(repPath, 'RSVS quality verification audit');
 
         const heatPath = r.verificationReport?.summary?.heatmapPath || path.join(options.outDir, `${base}.heatmap.glb`);
-        registerArtifact(heatPath, '3D-теплова карта відхилень');
+        registerArtifact(heatPath, '3D deviation heatmap (.glb)');
 
         for (const a of artifacts) {
           console.log(`   • ${chalk.bold.white(a.name)} ${chalk.gray(`(${a.size})`)} ➔ ${chalk.cyan(a.desc)}`);

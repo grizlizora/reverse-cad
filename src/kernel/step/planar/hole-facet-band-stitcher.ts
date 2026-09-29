@@ -80,9 +80,55 @@ export async function emitExactTrianglePlaneFace(
 }
 
 /**
+ * Emits an analytical ISO 10303-42 CYLINDRICAL_SURFACE entity fitted to a matched through-hole loop.
+ */
+export async function emitAnalyticalHoleCylinderSurface(
+  mh: MatchedThroughHole,
+  stepVerticesX: Float64Array,
+  stepVerticesY: Float64Array,
+  stepVerticesZ: Float64Array,
+  writer: StepStreamWriter,
+  allocator: StepIdAllocator
+): Promise<{ surfaceId: string; radius: number }> {
+  let radiusSum = 0;
+  const loop = mh.topLoop;
+  const [nx, ny, nz] = mh.normal;
+
+  for (let i = 0; i < loop.length; i++) {
+    const v = loop[i];
+    const dx = stepVerticesX[v] - mh.cx;
+    const dy = stepVerticesY[v] - mh.cy;
+    const dz = stepVerticesZ[v] - mh.cz;
+    const axial = dx * nx + dy * ny + dz * nz;
+    const rx = dx - axial * nx;
+    const ry = dy - axial * ny;
+    const rz = dz - axial * nz;
+    radiusSum += Math.hypot(rx, ry, rz);
+  }
+  const radius = loop.length > 0 ? Math.max(1e-4, radiusSum / loop.length) : 1.0;
+
+  const ptId = allocator.nextId();
+  const basis = computeOrthonormalBasis(mh.normal);
+  const dirZ = allocator.nextId();
+  const dirX = allocator.nextId();
+  const axisPlace = allocator.nextId();
+  const cylId = allocator.nextId();
+
+  const block =
+    `${ptId} = CARTESIAN_POINT('', (${formatStepFloat(mh.cx)}, ${formatStepFloat(mh.cy)}, ${formatStepFloat(mh.cz)}));\n` +
+    `${dirZ} = DIRECTION('', (${formatStepFloat(basis.dirZ[0])}, ${formatStepFloat(basis.dirZ[1])}, ${formatStepFloat(basis.dirZ[2])}));\n` +
+    `${dirX} = DIRECTION('', (${formatStepFloat(basis.dirX[0])}, ${formatStepFloat(basis.dirX[1])}, ${formatStepFloat(basis.dirX[2])}));\n` +
+    `${axisPlace} = AXIS2_PLACEMENT_3D('', ${ptId}, ${dirZ}, ${dirX});\n` +
+    `${cylId} = CYLINDRICAL_SURFACE('', ${axisPlace}, ${formatStepFloat(radius)});\n`;
+
+  await writer.writeBlock(block);
+
+  return { surfaceId: cylId, radius };
+}
+
+/**
  * Synthesizes closed 2-manifold triangular bands between matched through-hole loops,
- * guaranteeing 0 chordal deviation by allocating exact analytical surfaces.
- * Utilizes batch plane buffering and buffered StepFaceEmitter emission to prevent micro-flushes.
+ * referencing the true analytical CYLINDRICAL_SURFACE entity fitted to the bore.
  */
 export async function synthesizeThroughHoleBands(
   matchedHoles: MatchedThroughHole[],
@@ -110,29 +156,20 @@ export async function synthesizeThroughHoleBands(
     );
     if (bandFaces.length === 0) continue;
 
-    // Batch plane definitions per hole to eliminate per-triangle writer flushes
-    let planeBlock = '';
-    const planeIds: string[] = new Array(bandFaces.length);
-    for (let f = 0; f < bandFaces.length; f++) {
-      const bf = bandFaces[f];
-      const { planeId, block } = buildTrianglePlaneBlock(
-        bf.v0, bf.v1, bf.v2, stepVerticesX, stepVerticesY, stepVerticesZ, allocator
-      );
-      planeIds[f] = planeId;
-      planeBlock += block;
-    }
-
-    // Flush any previously buffered faces once, then write all plane entities as a single block
+    // Flush emitter before writing analytical cylinder surface block
     await emitter.flush();
-    await writer.writeBlock(planeBlock);
+    const { surfaceId: cylSurfaceId } = await emitAnalyticalHoleCylinderSurface(
+      mh, stepVerticesX, stepVerticesY, stepVerticesZ, writer, allocator
+    );
 
-    // Emit all band triangle faces into the emitter's high-speed 256KB chunkBuffer
+    // Emit all band triangle faces referencing the single canonical CYLINDRICAL_SURFACE
     for (let f = 0; f < bandFaces.length; f++) {
       const bf = bandFaces[f];
-      const fid = await emitter.emitTriangleFace(bf.v0, bf.v1, bf.v2, planeIds[f], true);
+      const fid = await emitter.emitTriangleFace(bf.v0, bf.v1, bf.v2, cylSurfaceId, false);
       shellFaceIds.push(fid);
     }
   }
 
   return shellFaceIds;
 }
+

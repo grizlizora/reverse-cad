@@ -39,21 +39,7 @@ export function analyzeRevolutionZSurfaces(
     if (s.type !== 'cylinder' && s.type !== 'cone') continue;
 
     const inlierSet = new Set<number>(s.inlierIndices);
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-
-    for (let k = 0; k < s.inlierIndices.length; k++) {
-      const t = s.inlierIndices[k];
-      const t3 = t * 3;
-      for (let j = 0; j < 3; j++) {
-        const v = indices[t3 + j];
-        const z = positions[v * 3 + 2];
-        if (z < minZ) minZ = z;
-        if (z > maxZ) maxZ = z;
-      }
-    }
-
-    if (!isFinite(minZ) || !isFinite(maxZ) || maxZ - minZ < 1e-4) continue;
+    if (!s.inlierIndices || s.inlierIndices.length === 0) continue;
 
     // 2. Adaptive Topological Obstacle Detection along Cylinder Axis
     // Finds non-inlier geometry intersecting the cylinder interior (e.g. cross-bridges, stepped floors)

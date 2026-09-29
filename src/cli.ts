@@ -68,11 +68,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     const activeList = Object.entries(options.emitTargets)
       .filter(([_, v]) => v)
       .map(([k]) => k.toUpperCase());
-    console.log(chalk.cyan(` • Обрані вихідні файли: [${activeList.join(', ')}]`));
+    console.log(chalk.cyan(` • Selected output targets: [${activeList.join(', ')}]`));
   }
 
   if (options.material) {
-    console.log(chalk.cyan(` • Конфігурація матеріалів: "${options.material}"`));
+    console.log(chalk.cyan(` • Material assignment configuration: "${options.material}"`));
   }
 
   try {

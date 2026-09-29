@@ -16,14 +16,14 @@ export async function promptInteractiveEmit(): Promise<EmitTargets> {
 
   try {
     console.log(chalk.bold.cyan('\n========================================================================'));
-    console.log(chalk.bold.cyan('  ⚙️  НАЛАШТУВАННЯ ВИХІДНИХ ФАЙЛІВ ДЛЯ КОНВЕРТАЦІЇ'));
+    console.log(chalk.bold.cyan('  ⚙️  OUTPUT FORMAT CONFIGURATION'));
     console.log(chalk.bold.cyan('========================================================================'));
-    console.log(`  1) 🌟 ${chalk.bold('Стандартний CAD-пакет')} (.step + інженерне резюме .json + аудит RSVS) [Enter]`);
-    console.log(`  2) 🧊 ${chalk.bold('Тільки 3D-солід')} (тільки .step — мінімальний розмір файлу)`);
-    console.log(`  3) 🔬 ${chalk.bold('Повний інженерний аудит')} (все + 3D теплова карта .glb + топологія)`);
-    console.log(`  4) 🛠️  ${chalk.bold('Кастомний вибір')} (вибрати файли окремо вручну)`);
+    console.log(`  1) 🌟 ${chalk.bold('Standard CAD Package')} (.step + engineering .json + RSVS audit) [Enter]`);
+    console.log(`  2) 🧊 ${chalk.bold('Solid 3D Only')} (.step only — minimal file size)`);
+    console.log(`  3) 🔬 ${chalk.bold('Full Engineering Audit')} (all outputs + 3D heatmap .glb + topology)`);
+    console.log(`  4) 🛠️  ${chalk.bold('Custom Selection')} (manually choose output targets)`);
 
-    const ans = (await question(chalk.yellow('\nОберіть варіант [1-4] (за замовчуванням 1): '))).trim();
+    const ans = (await question(chalk.yellow('\nSelect option [1-4] (default 1): '))).trim();
 
     if (ans === '2') {
       return { step: true, summary: false, topology: false, report: false, heatmap: false };
@@ -32,12 +32,12 @@ export async function promptInteractiveEmit(): Promise<EmitTargets> {
       return { step: true, summary: true, topology: true, report: true, heatmap: true };
     }
     if (ans === '4') {
-      console.log(chalk.cyan('\nВкажіть потрібні файли [y/n]:'));
-      const qStep = (await question(' • 3D CAD-модель (.step)? [Y/n]: ')).trim().toLowerCase();
-      const qSum = (await question(' • Інженерне резюме елементів (.summary.json)? [Y/n]: ')).trim().toLowerCase();
-      const qTop = (await question(' • Глибока топологічна B-Rep карта (.topology.json)? [y/N]: ')).trim().toLowerCase();
-      const qRep = (await question(' • Звіт верифікації точності RSVS (.verification_report.json)? [Y/n]: ')).trim().toLowerCase();
-      const qHeat = (await question(' • 3D-теплова карта відхилень (.heatmap.glb)? [y/N]: ')).trim().toLowerCase();
+      console.log(chalk.cyan('\nSelect required output targets [y/n]:'));
+      const qStep = (await question(' • 3D CAD model (.step)? [Y/n]: ')).trim().toLowerCase();
+      const qSum = (await question(' • Engineering features summary (.summary.json)? [Y/n]: ')).trim().toLowerCase();
+      const qTop = (await question(' • Deep B-Rep topology graph (.topology.json)? [y/N]: ')).trim().toLowerCase();
+      const qRep = (await question(' • RSVS quality verification report (.verification_report.json)? [Y/n]: ')).trim().toLowerCase();
+      const qHeat = (await question(' • 3D deviation heatmap (.heatmap.glb)? [y/N]: ')).trim().toLowerCase();
       return {
         step: qStep !== 'n' && qStep !== 'no',
         summary: qSum !== 'n' && qSum !== 'no',

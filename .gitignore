@@ -15,7 +15,7 @@ test_diff_output/
 test_output/
 scratch/
 demo_models/
-приклад/
+example/
 *.heic
 
 # 3D files & binary CAD artifacts

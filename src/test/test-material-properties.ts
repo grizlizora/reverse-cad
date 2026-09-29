@@ -25,9 +25,9 @@ describe('Material Catalog Resolution & Assignment', () => {
     assert.strictEqual(glass.transparency, 0.85);
     assert.strictEqual(glass.refractiveIndex, 1.52);
 
-    const ukrGlass = resolveMaterial('sklo');
-    assert.strictEqual(ukrGlass.id, 'glass');
-    assert.strictEqual(resolveMaterial('скло').id, 'glass');
+    const pyrexGlass = resolveMaterial('pyrex');
+    assert.strictEqual(pyrexGlass.id, 'glass');
+    assert.strictEqual(resolveMaterial('borosilicate').id, 'glass');
 
     // Verify no false-positive collision between "car"/"carb" and "polycarbonate"
     assert.strictEqual(resolveMaterial('car').id, 'carbon_fiber');
