@@ -10,6 +10,7 @@ import { DWRRMeshScheduler } from './dwrr-queue.js';
 export interface FileDiscoveryResult {
   totalFilesCount: number;
   isValid: boolean;
+  discoveredFiles: string[];
 }
 
 /**
@@ -27,20 +28,23 @@ export async function discoverAndEnqueueFiles(
       console.error(chalk.bold.red(`\n✖ Error: Specified file or directory not found:`));
       console.error(chalk.yellow(`  ➜ "${inputPath}"`));
       console.error(chalk.gray(`  Hint: verify the path is correct and the file exists on disk.\n`));
-      return { totalFilesCount: 0, isValid: false };
+      return { totalFilesCount: 0, isValid: false, discoveredFiles: [] };
     }
     throw err;
   }
 
   let totalFilesCount = 0;
+  const discoveredFiles: string[] = [];
 
   if (stat.isDirectory()) {
     const entries = await fs.promises.readdir(inputPath, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       if (entry.isFile() && entry.name.toLowerCase().endsWith('.stl')) {
         const fullPath = path.join(inputPath, entry.name);
         const fStat = await fs.promises.stat(fullPath);
         scheduler.enqueue(fullPath, fStat.size);
+        discoveredFiles.push(fullPath);
         totalFilesCount++;
       }
     }
@@ -49,16 +53,17 @@ export async function discoverAndEnqueueFiles(
       console.error(chalk.bold.red(`\n✖ Error: Specified file is not an .stl model:`));
       console.error(chalk.yellow(`  ➜ "${inputPath}"`));
       console.error(chalk.gray(`  The pipeline is designed for polygonal 3D STL meshes.\n`));
-      return { totalFilesCount: 0, isValid: false };
+      return { totalFilesCount: 0, isValid: false, discoveredFiles: [] };
     }
     scheduler.enqueue(inputPath, stat.size);
+    discoveredFiles.push(inputPath);
     totalFilesCount++;
   }
 
   if (totalFilesCount === 0) {
     console.log(chalk.yellow(`\n⚠ No STL files found at path: ${inputPath}\n`));
-    return { totalFilesCount: 0, isValid: false };
+    return { totalFilesCount: 0, isValid: false, discoveredFiles: [] };
   }
 
-  return { totalFilesCount, isValid: true };
+  return { totalFilesCount, isValid: true, discoveredFiles };
 }

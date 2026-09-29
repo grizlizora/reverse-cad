@@ -12,6 +12,8 @@ output/
 output_*/
 batch_output/
 test_diff_output/
+test_output/
+scratch/
 demo_models/
 приклад/
 *.heic

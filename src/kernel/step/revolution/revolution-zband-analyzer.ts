@@ -17,6 +17,7 @@ export interface RevolutionFeatureZone {
   axisOrigin: [number, number, number];
   axisDirection: [number, number, number];
   radius: number;
+  isInternal: boolean;
   bands: ZBandPartition[];
   inlierTriangles: Set<number>;
 }
@@ -58,66 +59,94 @@ export function analyzeRevolutionZSurfaces(
     // Finds non-inlier geometry intersecting the cylinder interior (e.g. cross-bridges, stepped floors)
     const c = s as CylinderSurface;
     const ax = c.axisDirection[0], ay = c.axisDirection[1], az = c.axisDirection[2];
+    const lenA = Math.hypot(ax, ay, az);
+    if (lenA < 1e-6) continue;
+    const nax = ax / lenA, nay = ay / lenA, naz = az / lenA;
     const ox = c.axisOrigin[0], oy = c.axisOrigin[1], oz = c.axisOrigin[2];
-    const rThresh = (c.radius || 7.65) * 1.05;
+    const radius = c.radius && c.radius > 0 ? c.radius : 1.0;
+    const rThresh = radius * 1.05;
 
-    // Scan for non-inlier vertices lying inside the cylinder radius
-    const obstacleZSamples: number[] = [];
-    const triCount = mesh.triangleCount;
-    for (let t = 0; t < triCount; t++) {
-      if (inlierSet.has(t)) continue;
+    let minProj = Infinity;
+    let maxProj = -Infinity;
+
+    for (let k = 0; k < s.inlierIndices.length; k++) {
+      const t = s.inlierIndices[k];
       const t3 = t * 3;
-      let hasInside = false;
-      let triZMin = Infinity, triZMax = -Infinity;
-
       for (let j = 0; j < 3; j++) {
         const v = indices[t3 + j];
         const px = positions[v * 3], py = positions[v * 3 + 1], pz = positions[v * 3 + 2];
-        const dx = px - ox, dy = py - oy, dz = pz - oz;
-        const proj = dx * ax + dy * ay + dz * az;
-
-        // Radial distance perpendicular to axis
-        const rx = dx - proj * ax;
-        const ry = dy - proj * ay;
-        const rz = dz - proj * az;
-        const distRad = Math.hypot(rx, ry, rz);
-
-        if (distRad <= rThresh && pz >= minZ - 1e-3 && pz <= maxZ + 1e-3) {
-          hasInside = true;
-          if (pz < triZMin) triZMin = pz;
-          if (pz > triZMax) triZMax = pz;
-        }
-      }
-
-      if (hasInside && isFinite(triZMin) && isFinite(triZMax)) {
-        obstacleZSamples.push(triZMin, triZMax);
+        const proj = (px - ox) * nax + (py - oy) * nay + (pz - oz) * naz;
+        if (proj < minProj) minProj = proj;
+        if (proj > maxProj) maxProj = proj;
       }
     }
 
-    // Partition into bands based on detected obstacle intervals
-    const bands: ZBandPartition[] = [];
-    if (obstacleZSamples.length > 0) {
-      obstacleZSamples.sort((a, b) => a - b);
-      const obsMin = Math.max(minZ, obstacleZSamples[0]);
-      const obsMax = Math.min(maxZ, obstacleZSamples[obstacleZSamples.length - 1]);
+    if (!isFinite(minProj) || !isFinite(maxProj) || maxProj - minProj < 1e-4) continue;
 
-      if (obsMin - minZ > 0.1) {
-        bands.push({ zMin: minZ, zMax: obsMin, isObstacleZone: false });
+    // 2. Adaptive Topological Obstacle Detection along Cylinder Axis
+    // Finds non-inlier geometry intersecting external cylinder surfaces
+    const bands: ZBandPartition[] = [];
+    if (!s.isInternal) {
+      const obstacleProjSamples: number[] = [];
+      const triCount = mesh.triangleCount;
+      for (let t = 0; t < triCount; t++) {
+        if (inlierSet.has(t)) continue;
+        const t3 = t * 3;
+        let hasInside = false;
+        let triProjMin = Infinity, triProjMax = -Infinity;
+
+        for (let j = 0; j < 3; j++) {
+          const v = indices[t3 + j];
+          const px = positions[v * 3], py = positions[v * 3 + 1], pz = positions[v * 3 + 2];
+          const dx = px - ox, dy = py - oy, dz = pz - oz;
+          const proj = dx * nax + dy * nay + dz * naz;
+
+          // Radial distance perpendicular to axis
+          const rx = dx - proj * nax;
+          const ry = dy - proj * nay;
+          const rz = dz - proj * naz;
+          const distRad = Math.hypot(rx, ry, rz);
+
+          if (distRad <= rThresh && proj >= minProj - 1e-3 && proj <= maxProj + 1e-3) {
+            hasInside = true;
+            if (proj < triProjMin) triProjMin = proj;
+            if (proj > triProjMax) triProjMax = proj;
+          }
+        }
+
+        if (hasInside && isFinite(triProjMin) && isFinite(triProjMax)) {
+          obstacleProjSamples.push(triProjMin, triProjMax);
+        }
       }
-      bands.push({ zMin: obsMin, zMax: obsMax, isObstacleZone: true });
-      if (maxZ - obsMax > 0.1) {
-        bands.push({ zMin: obsMax, zMax: maxZ, isObstacleZone: false });
+
+      // Partition into bands based on detected obstacle intervals
+      if (obstacleProjSamples.length > 0) {
+        obstacleProjSamples.sort((a, b) => a - b);
+        const obsMin = Math.max(minProj, obstacleProjSamples[0]);
+        const obsMax = Math.min(maxProj, obstacleProjSamples[obstacleProjSamples.length - 1]);
+
+        if (obsMin - minProj > 0.1) {
+          bands.push({ zMin: minProj, zMax: obsMin, isObstacleZone: false });
+        }
+        bands.push({ zMin: obsMin, zMax: obsMax, isObstacleZone: true });
+        if (maxProj - obsMax > 0.1) {
+          bands.push({ zMin: obsMax, zMax: maxProj, isObstacleZone: false });
+        }
+      } else {
+        bands.push({ zMin: minProj, zMax: maxProj, isObstacleZone: false });
       }
     } else {
-      bands.push({ zMin: minZ, zMax: maxZ, isObstacleZone: false });
+      // Internal cylindrical bore: continuous clean analytical surface
+      bands.push({ zMin: minProj, zMax: maxProj, isObstacleZone: false });
     }
 
     zones.push({
       surfaceId: s.id,
       type: s.type,
       axisOrigin: [c.axisOrigin[0], c.axisOrigin[1], c.axisOrigin[2]],
-      axisDirection: [c.axisDirection[0], c.axisDirection[1], c.axisDirection[2]],
-      radius: c.radius || 7.65,
+      axisDirection: [nax, nay, naz],
+      radius,
+      isInternal: Boolean(s.isInternal),
       bands,
       inlierTriangles: inlierSet
     });

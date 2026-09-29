@@ -78,7 +78,14 @@ fi
 
 # 4. Check or compile TypeScript project
 DIST_CLI="$PROJECT_DIR/dist/cli.js"
-if [ ! -f "$DIST_CLI" ] || [ "$PROJECT_DIR/src" -nt "$DIST_CLI" ]; then
+NEEDS_BUILD=0
+if [ ! -f "$DIST_CLI" ]; then
+  NEEDS_BUILD=1
+elif [ -n "$(find "$PROJECT_DIR/src" -type f -newer "$DIST_CLI" 2>/dev/null | head -n 1)" ]; then
+  NEEDS_BUILD=1
+fi
+
+if [ "$NEEDS_BUILD" -eq 1 ]; then
   log_info "Compiling TypeScript pipeline..."
   cd "$PROJECT_DIR"
   if [ -x "./node_modules/.bin/tsc" ]; then

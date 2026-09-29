@@ -5,14 +5,14 @@
 import { CADFeaturesSummary } from '../types/features.js';
 import {
   clusterNormalizedHoles,
-  HolePatternCluster,
-  NormalizedHole,
+  type HolePatternCluster,
+  type NormalizedHole,
   normalizeHole
 } from './pcd-pattern-engine.js';
 import { generateCompactCsgDsl } from './csg-dsl-generator.js';
 
 export type ContextTier = 'ctx_4k_edge' | 'ctx_8k_balanced' | 'ctx_32k_ide' | 'ctx_128k_frontier';
-export { HolePatternCluster, NormalizedHole, normalizeHole };
+export { type HolePatternCluster, type NormalizedHole, normalizeHole };
 
 /**
  * Clusters repeated holes into geometric patterns losslessly.

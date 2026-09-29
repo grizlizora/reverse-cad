@@ -4,9 +4,9 @@
 
 import { RawMesh, CylinderSurface, Point3D, Vector3D } from '../../types/geometry.js';
 import { computeCylinderAngularMetrics } from './angular-metrics.js';
-import { FastPRNG, pickRandomUnassigned } from './cylinder-sampler.js';
+import { FastPRNG, pickRandomUnassigned, pickLocalizedNeighborBuffers } from './cylinder-sampler.js';
 import { scoreCylinderCandidate } from './cylinder-scoring.js';
-import { pickLocalizedNeighborBuffers, buildSpatialGrid } from './spatial-grid.js';
+import { buildSpatialGrid } from './spatial-grid.js';
 import { generateCylinderHypothesis } from './cylinder-hypothesis.js';
 import { validateCylinderFeature, pruneCylinderInliers } from './cylinder-feature-validator.js';
 
@@ -68,7 +68,7 @@ export function extractCylindersRANSACInternal(
       const p0: Point3D = [centroids[s3], centroids[s3 + 1], centroids[s3 + 2]];
       const n0: Vector3D = [normals[s3], normals[s3 + 1], normals[s3 + 2]];
 
-      const neighborIdx = pickLocalizedNeighborBuffers(unassigned, centroids, p0, 35.0, spatialGrid);
+      const neighborIdx = pickLocalizedNeighborBuffers(unassigned, centroids, p0, 35.0, spatialGrid, prng);
       if (neighborIdx < 0) continue;
 
       const n3 = neighborIdx * 3;

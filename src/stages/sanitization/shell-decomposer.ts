@@ -16,12 +16,13 @@ export interface ShellDecompositionResult {
 export function decomposeTopologicalShells(
   positions: Float32Array,
   indices: Uint32Array,
-  triangleAdjacency: number[][]
+  triangleAdjacency: number[][] | Int32Array
 ): ShellDecompositionResult {
   const triangleCount = Math.floor(indices.length / 3);
   const visited = new Uint8Array(triangleCount);
   const shells: MeshShell[] = [];
   let shellIdx = 0;
+  const isFlat = triangleAdjacency instanceof Int32Array;
 
   for (let t = 0; t < triangleCount; t++) {
     if (visited[t]) continue;
@@ -37,11 +38,8 @@ export function decomposeTopologicalShells(
       const cur = queue.pop()!;
       shellTriangles.push(cur);
 
-      const i0 = indices[cur * 3] * 3;
-      const i1 = indices[cur * 3 + 1] * 3;
-      const i2 = indices[cur * 3 + 2] * 3;
-
-      for (const idx of [i0, i1, i2]) {
+      for (let k = 0; k < 3; k++) {
+        const idx = indices[cur * 3 + k] * 3;
         const x = positions[idx];
         const y = positions[idx + 1];
         const z = positions[idx + 2];
@@ -50,13 +48,24 @@ export function decomposeTopologicalShells(
         if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
       }
 
-      const neighbors = triangleAdjacency[cur];
-      if (neighbors) {
-        for (let n = 0; n < neighbors.length; n++) {
-          const neighbor = neighbors[n];
-          if (!visited[neighbor]) {
+      if (isFlat) {
+        const base = cur * 3;
+        for (let e = 0; e < 3; e++) {
+          const neighbor = (triangleAdjacency as Int32Array)[base + e];
+          if (neighbor !== -1 && !visited[neighbor]) {
             visited[neighbor] = 1;
             queue.push(neighbor);
+          }
+        }
+      } else {
+        const neighbors = (triangleAdjacency as number[][])[cur];
+        if (neighbors) {
+          for (let n = 0; n < neighbors.length; n++) {
+            const neighbor = neighbors[n];
+            if (!visited[neighbor]) {
+              visited[neighbor] = 1;
+              queue.push(neighbor);
+            }
           }
         }
       }

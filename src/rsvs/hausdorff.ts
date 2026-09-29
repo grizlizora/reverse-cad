@@ -3,7 +3,7 @@
 // ==============================================================================
 
 import { RawMesh, SurfacePrimitive } from '../types/geometry.js';
-import { computeHausdorffParallel, HausdorffMetrics, quickSelect } from './hausdorff-parallel.js';
+import { computeHausdorffParallel, type HausdorffMetrics, quickSelect } from './hausdorff-parallel.js';
 import { samplePointsAreaWeighted } from './cdf-sampler.js';
 
 export * from './cdf-sampler.js';
@@ -24,9 +24,10 @@ export interface HausdorffResult {
 export function computeHausdorffAndRmse(
   mesh: RawMesh,
   surfaces: SurfacePrimitive[],
-  sampleCount = 3000
+  sampleCount = 3000,
+  rawMesh?: RawMesh
 ): HausdorffResult {
-  const metrics: HausdorffMetrics = computeHausdorffParallel(mesh, surfaces, sampleCount);
+  const metrics: HausdorffMetrics = computeHausdorffParallel(mesh, surfaces, sampleCount, rawMesh);
   return {
     hausdorff99Mm: metrics.hausdorff99Mm,
     hausdorffMaxMm: metrics.hausdorffMaxMm,

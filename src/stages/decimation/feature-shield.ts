@@ -33,11 +33,25 @@ export function buildFeatureShield(
 
   const cosFeature = Math.cos(options.featureAngleRad);
   const cosCurvature = Math.cos(options.curvatureAngleRad);
-  const cosFineFeature = Math.cos(options.fineFeatureAngleRad ?? ((4.0 * Math.PI) / 180.0));
+  const cosFineFeature = Math.cos(options.fineFeatureAngleRad ?? ((15.0 * Math.PI) / 180.0));
+
+  // Scale-invariant characteristic dimension
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i], y = positions[i + 1], z = positions[i + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  const diag = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
+  const scaleRatio = diag > 1e-4 ? Math.max(0.01, Math.min(100.0, diag / 140.0)) : 1.0;
+  const maxFineEdgeLenSq = (2.0 * scaleRatio) * (2.0 * scaleRatio);
 
   // Tier A: Boundary edges and non-manifold connections
   // Tier B: Sharp CAD feature edges (dihedral angle > featureAngleRad)
-  // Tier E: Fine Feature & Thread Shield (edges < 2.0mm)
+  // Tier E: Fine Feature & Thread Shield (edges < 2.0mm * scaleRatio)
   for (const [key, faces] of edgeToFaces.entries()) {
     const vA = Math.floor(key / 67108864);
     const vB = key % 67108864;
@@ -67,7 +81,7 @@ export function buildFeatureShield(
     const dz = positions[vA * 3 + 2] - positions[vB * 3 + 2];
     const edgeLenSq = dx * dx + dy * dy + dz * dz;
 
-    if (edgeLenSq < 4.0) { // 2.0mm ^ 2
+    if (edgeLenSq < maxFineEdgeLenSq) {
       if (dotNorm < cosFineFeature) {
         isVertexLocked[vA] = 1;
         isVertexLocked[vB] = 1;

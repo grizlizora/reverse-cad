@@ -108,13 +108,13 @@ export function computePolyhedralMassProperties(mesh: RawMesh): PolyhedralMassPr
   const relY = cmY - ay;
   const relZ = cmZ - az;
 
-  // Integral of squared coordinates about origin
-  const Ixx0 = (sign * (inty2 + intz2)) / 60.0;
-  const Iyy0 = (sign * (intx2 + intz2)) / 60.0;
-  const Izz0 = (sign * (intx2 + inty2)) / 60.0;
-  const Ixy0 = (sign * intxy) / 60.0;
-  const Iyz0 = (sign * intyz) / 60.0;
-  const Izx0 = (sign * intzx) / 60.0;
+  // Integral of squared coordinates about origin (Mirtich 1996: divisor = 120.0)
+  const Ixx0 = (sign * (inty2 + intz2)) / 120.0;
+  const Iyy0 = (sign * (intx2 + intz2)) / 120.0;
+  const Izz0 = (sign * (intx2 + inty2)) / 120.0;
+  const Ixy0 = (sign * intxy) / 120.0;
+  const Iyz0 = (sign * intyz) / 120.0;
+  const Izx0 = (sign * intzx) / 120.0;
 
   // Parallel axis theorem to shift to Center of Mass
   const Ixx = Math.max(0, Ixx0 - absVol * (relY * relY + relZ * relZ));

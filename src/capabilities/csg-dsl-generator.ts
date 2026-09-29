@@ -2,7 +2,7 @@
 // src/capabilities/csg-dsl-generator.ts — Pure Functional CSG DSL Generator
 // ==============================================================================
 
-import { HolePatternCluster } from './pcd-pattern-engine.js';
+import type { HolePatternCluster } from './pcd-pattern-engine.js';
 
 export interface CsgDslInput {
   boundingDimensionsMm?: [number, number, number];

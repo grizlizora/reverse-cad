@@ -9,6 +9,11 @@ export interface SolidBodyConfig {
   name: string;
   colorRgb?: [number, number, number]; // [R, G, B] normalized 0.0 .. 1.0
   colorLabel?: string;
+  materialName?: string;
+  densityGcm3?: number;
+  transparency?: number; // 0.0 (opaque) .. 1.0 (fully transparent)
+  refractiveIndex?: number;
+  youngsModulusGpa?: number;
 }
 
 export interface StepBoundingBox {
@@ -24,6 +29,10 @@ export interface StepSolidBodyMetadata {
   volumeMm3: number;
   surfaceAreaMm2: number;
   boundingBox: StepBoundingBox;
+  materialName?: string;
+  densityGcm3?: number;
+  massGrams?: number;
+  transparency?: number;
 }
 
 export interface StepBRepSynthesisReport {
@@ -40,6 +49,9 @@ export interface StepWriterOptions {
   shells?: MeshShell[];
   bodyConfigs?: SolidBodyConfig[];
   kinematicJoints?: CADKinematicJoint[];
+  representationMode?: 'brep' | 'tessellated' | 'auto';
+  threadMode?: 'physical' | 'semantic' | 'auto';
+  material?: string;
 }
 
 export interface DefaultPaletteEntry {

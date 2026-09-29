@@ -23,7 +23,8 @@ export async function exportSummaryJson(
   outputPath: string,
   baseFileName: string,
   bRepSynthesis?: StepBRepSynthesisReport,
-  precomputedMassProps?: PolyhedralMassProperties
+  precomputedMassProps?: PolyhedralMassProperties,
+  materialSpecStr?: string
 ): Promise<CADFeaturesSummary> {
   const rawSummary = buildCADFeaturesSummary(
     mesh,
@@ -31,7 +32,8 @@ export async function exportSummaryJson(
     profiling,
     baseFileName,
     bRepSynthesis,
-    precomputedMassProps
+    precomputedMassProps,
+    materialSpecStr
   );
 
   const budgeted = applyContextBudget(rawSummary, 'ctx_8k_balanced');

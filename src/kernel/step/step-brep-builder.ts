@@ -7,7 +7,8 @@ import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
 import { SolidBodyConfig, StepSolidBodyMetadata, StepBRepSynthesisReport } from './step-types.js';
 import { SurfaceStepMapping } from './step-analytical-surfaces.js';
-import { buildFastMultiBodyBRep } from './fast-brep-builder.js';
+import { buildFastMultiBodyBRep, writeFastBRepSolid } from './fast-brep-builder.js';
+import { PrecomputedShellTopology } from './step-body-preparation.js';
 
 export interface BRepAssemblyResult {
   solidBRepIds: string[];
@@ -15,7 +16,7 @@ export interface BRepAssemblyResult {
   report: StepBRepSynthesisReport;
 }
 
-export { buildFastMultiBodyBRep };
+export { buildFastMultiBodyBRep, writeFastBRepSolid };
 
 /**
  * Builds standard STEP AP242 Multi-Body solid B-Rep topology (Closed Shells, Faces, Loops)
@@ -32,7 +33,9 @@ export async function buildMultiBodyBRep(
   pointIds: string[],
   stepVerticesX: Float64Array,
   stepVerticesY: Float64Array,
-  stepVerticesZ: Float64Array
+  stepVerticesZ: Float64Array,
+  cavityShells: MeshShell[] = [],
+  precomputedShells?: Map<number, PrecomputedShellTopology>
 ): Promise<BRepAssemblyResult> {
   return buildFastMultiBodyBRep(
     writer,
@@ -45,7 +48,9 @@ export async function buildMultiBodyBRep(
     pointIds,
     stepVerticesX,
     stepVerticesY,
-    stepVerticesZ
+    stepVerticesZ,
+    cavityShells,
+    precomputedShells
   );
 }
 
@@ -60,7 +65,8 @@ export async function writeProductDefinitionHierarchy(
   axisPlacementId: string,
   geometricContextId: string,
   author = 'CAD Reverse-Engineering Engine v1.0',
-  organization = 'Open Source CAD Project'
+  organization = 'Open Source CAD Project',
+  shapeRepType = 'ADVANCED_BREP_SHAPE_REPRESENTATION'
 ): Promise<void> {
   const shapeRepId = allocator.nextId();
   const shapeDefRepId = allocator.nextId();
@@ -74,7 +80,7 @@ export async function writeProductDefinitionHierarchy(
   const appProtocolDefId = allocator.nextId();
 
   const repItems = [axisPlacementId, ...solidBRepIds].join(', ');
-  await writer.writeLine(`${shapeRepId} = ADVANCED_BREP_SHAPE_REPRESENTATION('${modelName}_Assembly', (${repItems}), ${geometricContextId});`);
+  await writer.writeLine(`${shapeRepId} = ${shapeRepType}('${modelName}_Assembly', (${repItems}), ${geometricContextId});`);
   await writer.writeLine(`${shapeDefRepId} = SHAPE_DEFINITION_REPRESENTATION(${prodDefShapeId}, ${shapeRepId});`);
   await writer.writeLine(`${prodDefShapeId} = PRODUCT_DEFINITION_SHAPE('${modelName}_Shape', 'Shape of ${modelName}', ${prodDefId});`);
   await writer.writeLine(`${prodDefId} = PRODUCT_DEFINITION('${modelName}_PD', 'Product definition for ${modelName}', ${prodDefFormId}, ${prodContextId});`);

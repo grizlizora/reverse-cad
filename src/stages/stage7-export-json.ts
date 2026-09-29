@@ -32,7 +32,8 @@ export async function exportCADJson(
   profiling: ProfilingResult,
   outputDir: string,
   baseFileName: string,
-  bRepSynthesis?: StepBRepSynthesisReport
+  bRepSynthesis?: StepBRepSynthesisReport,
+  options?: { skipTopology?: boolean; material?: string }
 ): Promise<JsonExportResult> {
   const summaryFileName = `${baseFileName}.cad_features.summary.json`;
   const topologyFileName = `${baseFileName}.cad_features.topology.json`;
@@ -46,15 +47,19 @@ export async function exportCADJson(
     profiling,
     summaryPath,
     baseFileName,
-    bRepSynthesis
+    bRepSynthesis,
+    undefined,
+    options?.material
   );
 
-  await exportTopologyJsonStream(
-    summaryData,
-    surfaces,
-    profiling,
-    topologyPath
-  );
+  if (!options?.skipTopology) {
+    await exportTopologyJsonStream(
+      summaryData,
+      surfaces,
+      profiling,
+      topologyPath
+    );
+  }
 
   return { summaryPath, topologyPath, summaryData };
 }

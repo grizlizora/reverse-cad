@@ -6,9 +6,9 @@ import { RawMesh } from '../../types/geometry.js';
 import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
 import { formatStepFloat, computeOrthonormalBasis } from './step-orthonormal-basis.js';
-import { classifyFacetPlanes, FacetPlaneDescriptor } from './facet-plane-classifier.js';
+import { classifyFacetPlanes, type FacetPlaneDescriptor } from './facet-plane-classifier.js';
 
-export { FacetPlaneDescriptor };
+export type { FacetPlaneDescriptor };
 
 /**
  * Sanitizes floating point value for backwards-compatible format lookups.

@@ -49,5 +49,8 @@ export class PipelineContext {
     }
     this.surfaces = [];
     this.profiling = null;
+    this.stepResult = null;
+    this.jsonResult = null;
+    this.rsvsResult = null;
   }
 }

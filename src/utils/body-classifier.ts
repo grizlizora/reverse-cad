@@ -4,12 +4,12 @@
 
 import { MeshShell } from '../types/geometry.js';
 import { CADKinematicJoint } from '../types/features.js';
-import { ClassifiedBody } from './body-strategies.js';
+import { type ClassifiedBody } from './body-strategies.js';
 import { BodyClassificationEngine } from './body-classification-engine.js';
 
 export {
-  ClassifiedBody,
-  BodyClassificationStrategy,
+  type ClassifiedBody,
+  type BodyClassificationStrategy,
   MonolithicBodyStrategy,
   FoldingMechanismStrategy,
   SpatialDeterministicFallbackStrategy,

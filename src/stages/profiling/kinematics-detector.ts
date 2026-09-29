@@ -5,9 +5,9 @@
 import { RawMesh, SurfacePrimitive, CylinderSurface, MeshShell } from '../../types/geometry.js';
 import { CADKinematicJoint } from '../../types/features.js';
 import {
-  CandidateJoint,
-  KinematicsResult,
-  HingeRegistry,
+  type CandidateJoint,
+  type KinematicsResult,
+  type HingeRegistry,
   pointToLineDistance3D,
   isCylinderHingeAssociated
 } from './kinematics/kinematic-dto.js';

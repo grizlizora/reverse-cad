@@ -5,7 +5,7 @@
 import { RawMesh } from '../../types/geometry.js';
 import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
-import { formatStepFloat } from './step-orthonormal-basis.js';
+import { formatStepFloat, quantizeStepFloat } from './step-orthonormal-basis.js';
 
 export interface StepContextIds {
   idLengthUnit: string;
@@ -19,11 +19,14 @@ export interface StepContextIds {
   idAxisPlacement: string;
 }
 
-export interface CartesianPointsResult {
-  pointIds: string[];
+export interface PrecomputedStepVertices {
   stepVerticesX: Float64Array;
   stepVerticesY: Float64Array;
   stepVerticesZ: Float64Array;
+}
+
+export interface CartesianPointsResult extends PrecomputedStepVertices {
+  pointIds: string[];
 }
 
 /**
@@ -91,38 +94,65 @@ export async function writeGeometricContext(
 }
 
 /**
- * Emits cartesian points for all vertices in the mesh in batch mode.
+ * Emits cartesian points for all referenced vertices in the mesh in batch mode.
  */
 export async function writeCartesianPoints(
   writer: StepStreamWriter,
   allocator: StepIdAllocator,
-  mesh: RawMesh
+  mesh: RawMesh,
+  usedVertices?: Uint8Array,
+  precomputedVertices?: PrecomputedStepVertices
 ): Promise<CartesianPointsResult> {
   const vertexCount = mesh.vertexCount;
   const pointIds: string[] = new Array(vertexCount);
-  const stepVerticesX = new Float64Array(vertexCount);
-  const stepVerticesY = new Float64Array(vertexCount);
-  const stepVerticesZ = new Float64Array(vertexCount);
+  const stepVerticesX = precomputedVertices?.stepVerticesX ?? new Float64Array(vertexCount);
+  const stepVerticesY = precomputedVertices?.stepVerticesY ?? new Float64Array(vertexCount);
+  const stepVerticesZ = precomputedVertices?.stepVerticesZ ?? new Float64Array(vertexCount);
+  const hasPrecomputed = Boolean(precomputedVertices);
 
+  const coordMap = new Map<string, string>();
   let pointBlock = '';
-  for (let i = 0; i < vertexCount; i++) {
-    const pId = allocator.nextId();
-    const x = mesh.positions[i * 3];
-    const y = mesh.positions[i * 3 + 1];
-    const z = mesh.positions[i * 3 + 2];
-    const xStr = formatStepFloat(x, 5);
-    const yStr = formatStepFloat(y, 5);
-    const zStr = formatStepFloat(z, 5);
-    pointBlock += `${pId} = CARTESIAN_POINT('', (${xStr}, ${yStr}, ${zStr}));\n`;
-    pointIds[i] = pId;
-    stepVerticesX[i] = parseFloat(xStr);
-    stepVerticesY[i] = parseFloat(yStr);
-    stepVerticesZ[i] = parseFloat(zStr);
 
-    if (pointBlock.length >= 64 * 1024) {
-      await writer.writeBlock(pointBlock);
-      pointBlock = '';
+  for (let i = 0; i < vertexCount; i++) {
+    let qx: number;
+    let qy: number;
+    let qz: number;
+
+    if (hasPrecomputed) {
+      qx = stepVerticesX[i];
+      qy = stepVerticesY[i];
+      qz = stepVerticesZ[i];
+    } else {
+      const i3 = i * 3;
+      qx = quantizeStepFloat(mesh.positions[i3], 5);
+      qy = quantizeStepFloat(mesh.positions[i3 + 1], 5);
+      qz = quantizeStepFloat(mesh.positions[i3 + 2], 5);
+      stepVerticesX[i] = qx;
+      stepVerticesY[i] = qy;
+      stepVerticesZ[i] = qz;
     }
+
+    if (usedVertices && usedVertices[i] === 0) {
+      continue;
+    }
+
+    const xStr = formatStepFloat(qx, 5);
+    const yStr = formatStepFloat(qy, 5);
+    const zStr = formatStepFloat(qz, 5);
+
+    const key = `${xStr},${yStr},${zStr}`;
+    let pId = coordMap.get(key);
+    if (!pId) {
+      pId = allocator.nextId();
+      coordMap.set(key, pId);
+      pointBlock += `${pId} = CARTESIAN_POINT('', (${xStr}, ${yStr}, ${zStr}));\n`;
+
+      if (pointBlock.length >= 64 * 1024) {
+        await writer.writeBlock(pointBlock);
+        pointBlock = '';
+      }
+    }
+    pointIds[i] = pId;
   }
   if (pointBlock.length > 0) {
     await writer.writeBlock(pointBlock);

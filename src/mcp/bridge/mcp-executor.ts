@@ -37,7 +37,17 @@ export async function dispatchMcpTaskWithProtection(
 
   try {
     const result = await executeWithWatchdog(async (abortSignal) => {
-      return await mcpPool.runTask(payload, abortSignal);
+      const sharedAbortBuffer = payload.sharedAbortBuffer ?? new SharedArrayBuffer(4);
+      const abortView = new Int32Array(sharedAbortBuffer);
+      const onAbort = () => {
+        Atomics.store(abortView, 0, 1);
+      };
+      if (abortSignal.aborted) {
+        onAbort();
+      } else {
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
+      return await mcpPool.runTask({ ...payload, sharedAbortBuffer }, abortSignal);
     }, timeoutMs, taskName);
 
     memoryBreaker.reportSuccess();

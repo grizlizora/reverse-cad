@@ -16,6 +16,7 @@ import { stitchCoaxialCylinders } from './coaxial-stitcher.js';
 
 export * from './angular-metrics.js';
 export * from './spatial-grid.js';
+export * from './cylinder-sampler.js';
 export * from './plane-clusterer.js';
 export * from './cylinder-ransac.js';
 export * from './coaxial-stitcher.js';

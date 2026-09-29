@@ -85,6 +85,7 @@ export function classifyFacetPlanes(
       uniquePlanes.push({ cx, cy, cz, snx, sny, snz });
     }
 
+
     trianglePlaneIndices[t] = planeIdx;
     unclassifiedTriangles.push(t);
   }

@@ -5,15 +5,28 @@
 import { Vector3D } from '../../types/geometry.js';
 
 /**
+ * Quantizes a floating-point coordinate to the exact STEP decimal precision (default 1e-5)
+ * without string allocation or IEEE-754 signed zero (-0).
+ */
+export function quantizeStepFloat(val: number, decimals: number = 5): number {
+  if (!Number.isFinite(val)) return 0;
+  const factor = Math.pow(10, decimals);
+  const cutoff = 0.5 / factor;
+  if (Math.abs(val) < cutoff || Object.is(val, -0)) return 0;
+  const rounded = Math.round((val + Number.EPSILON * Math.sign(val)) * factor) / factor;
+  return Object.is(rounded, -0) || Math.abs(rounded) < cutoff ? 0 : rounded;
+}
+
+/**
  * Sanitizes floating point value to ensure -0 is normalized to +0 and formatted
  * strictly without IEEE 754 signed zero artifact ("-0.00000").
  */
 export function formatStepFloat(val: number, decimals: number = 5): string {
-  const cutoff = 0.5 * Math.pow(10, -decimals);
-  if (!Number.isFinite(val) || Math.abs(val) < cutoff || Object.is(val, -0)) {
+  const q = quantizeStepFloat(val, decimals);
+  if (q === 0) {
     return (0).toFixed(decimals);
   }
-  const str = val.toFixed(decimals);
+  const str = q.toFixed(decimals);
   return str.startsWith('-') && parseFloat(str) === 0 ? (0).toFixed(decimals) : str;
 }
 

@@ -18,7 +18,7 @@ export interface CylinderAngularMetrics {
 
 /**
  * Computes exact angular span, maximum circular gap, bin coverage, area density, and subtype
- * for a cylindrical segment around its axis.
+ * for a cylindrical segment around its axis using low-latency TypedArrays and Zero-GC sorting.
  */
 export function computeCylinderAngularMetrics(
   mesh: RawMesh,
@@ -30,6 +30,20 @@ export function computeCylinderAngularMetrics(
   radius?: number,
   areas?: Float32Array
 ): CylinderAngularMetrics {
+  if (!inliers || inliers.length === 0) {
+    return {
+      angularSpanRad: 0,
+      maxAngularGapRad: 2 * Math.PI,
+      angularBinCoverage: 0,
+      subType: 'partial_arc',
+      isClosed: false,
+      calculatedHeight: 1.0,
+      isInternal: false,
+      flankNormalRms: 0,
+      areaDensity: 0
+    };
+  }
+
   const ax = axisDir[0], ay = axisDir[1], az = axisDir[2];
   const ox = origin[0], oy = origin[1], oz = origin[2];
 
@@ -41,31 +55,22 @@ export function computeCylinderAngularMetrics(
   if (uLen > 1e-12) { ux /= uLen; uy /= uLen; uz /= uLen; } else { ux = 1; uy = 0; uz = 0; }
   const wx = ay * uz - az * uy, wy = az * ux - ax * uz, wz = ax * uy - ay * ux;
 
-  // 2. Sample polar angles from inlier triangle vertices and centroids
+  // 2. Sample polar angles from inlier triangle vertices and centroids (Zero-GC Float64Array)
   const totalSamples = inliers.length * 4;
-  const angles: number[] = new Array(totalSamples);
+  const angles = new Float64Array(totalSamples);
   let sampleCount = 0;
 
-  let minT = Infinity;
-  let maxT = -Infinity;
-  let normalRadialDotSum = 0;
-  let sumAxialDotSq = 0;
-
-  const positions = mesh.positions;
-  const indices = mesh.indices;
+  let minT = Infinity, maxT = -Infinity;
+  let normalRadialDotSum = 0, sumAxialDotSq = 0;
+  const positions = mesh.positions, indices = mesh.indices;
 
   for (let i = 0; i < inliers.length; i++) {
-    const t = inliers[i];
-    const t3 = t * 3;
+    const t = inliers[i], t3 = t * 3;
 
     // Centroid radial projection & normal alignment
-    const cx = centroids[t3] - ox;
-    const cy = centroids[t3 + 1] - oy;
-    const cz = centroids[t3 + 2] - oz;
+    const cx = centroids[t3] - ox, cy = centroids[t3 + 1] - oy, cz = centroids[t3 + 2] - oz;
     const cProj = cx * ax + cy * ay + cz * az;
-    const crx = cx - cProj * ax;
-    const cry = cy - cProj * ay;
-    const crz = cz - cProj * az;
+    const crx = cx - cProj * ax, cry = cy - cProj * ay, crz = cz - cProj * az;
     const crLen = Math.sqrt(crx * crx + cry * cry + crz * crz);
     if (crLen > 1e-6) {
       normalRadialDotSum += (normals[t3] * crx + normals[t3 + 1] * cry + normals[t3 + 2] * crz) / crLen;
@@ -95,8 +100,8 @@ export function computeCylinderAngularMetrics(
     }
   }
 
-  // 3. Sort angles & Compute maximum gap on S^1
-  angles.sort((a, b) => a - b);
+  // 3. Sort angles natively in C++ FPU (Zero closure GC churn) & compute maximum gap on S^1
+  angles.sort();
 
   let maxGap = 0;
   for (let i = 0; i < sampleCount - 1; i++) {

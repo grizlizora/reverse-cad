@@ -38,6 +38,15 @@ export function indexRawPositions(rawPositions: Float32Array, tolerance: number)
   const uniquePositions = new Float32Array(totalVertices * 3);
   const indices = new Uint32Array(totalVertices);
 
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  for (let i = 0; i < totalVertices; i++) {
+    const idx3 = i * 3;
+    const x = rawPositions[idx3], y = rawPositions[idx3 + 1], z = rawPositions[idx3 + 2];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+  }
+
   let uniqueCount = 0;
 
   for (let i = 0; i < totalVertices; i++) {
@@ -46,10 +55,10 @@ export function indexRawPositions(rawPositions: Float32Array, tolerance: number)
     const y = rawPositions[idx3 + 1];
     const z = rawPositions[idx3 + 2];
 
-    // Quantized coordinate bins
-    const qx = Math.round(x * invTol) | 0;
-    const qy = Math.round(y * invTol) | 0;
-    const qz = Math.round(z * invTol) | 0;
+    // Quantized coordinate bins offset by bounding origin to prevent 32-bit integer overflow
+    const qx = Math.round((x - minX) * invTol) | 0;
+    const qy = Math.round((y - minY) * invTol) | 0;
+    const qz = Math.round((z - minZ) * invTol) | 0;
 
     // Teschner 32-bit prime spatial hash
     const hash = ((Math.imul(qx, 73856093) ^ Math.imul(qy, 19349663) ^ Math.imul(qz, 83492791)) >>> 0) & mask;

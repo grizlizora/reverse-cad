@@ -3,6 +3,7 @@
 // ==============================================================================
 
 import * as fs from 'fs';
+import * as path from 'path';
 import chalk from 'chalk';
 import { PipelineOptions, PipelineResult } from '../types/worker.js';
 import { TerminalRenderer } from '../tui/terminal-renderer.js';
@@ -40,7 +41,7 @@ export async function runScheduler(inputPath: string, options: PipelineOptions):
   console.log(` • Protection: Dynamic Watchdog + Memory Circuit Breaker + Multi-Tier Fallback`);
   console.log(` • Streaming manifest log: ${chalk.cyan(manifestSink.manifestPath)}\n`);
 
-  const renderer = new TerminalRenderer(baseConcurrency, totalFilesCount);
+  const renderer = new TerminalRenderer(baseConcurrency, totalFilesCount, discovery.discoveredFiles);
 
   // Initialize Piscina worker pool
   const pool = initializeWorkerPool(baseConcurrency, budget.heapPerWorkerMb);
@@ -85,7 +86,41 @@ export async function runScheduler(inputPath: string, options: PipelineOptions):
     console.log(` • Failed or quarantined: ${chalk.bold.red(failedCount)}`);
   }
   console.log(` • Results saved to: ${chalk.cyan(options.outDir)}`);
-  console.log(` • Manifest log: ${chalk.cyan(manifestSink.manifestPath)}\n`);
+  console.log(` • Manifest log: ${chalk.cyan(manifestSink.manifestPath)}`);
+
+  // Display all generated files with exact sizes and purpose
+  if (passedCount > 0) {
+    console.log(chalk.bold.cyan(`\n📦 Згенеровані вихідні файли:`));
+    for (const r of results) {
+      if (r.success) {
+        const base = path.basename(r.filePath, path.extname(r.filePath));
+        const artifacts: { name: string; desc: string; size: string }[] = [];
+
+        const registerArtifact = (filePath?: string, desc?: string) => {
+          if (filePath && fs.existsSync(filePath)) {
+            const sz = fs.statSync(filePath).size;
+            const szStr = sz >= 1024 * 1024 ? `${(sz / (1024 * 1024)).toFixed(2)} MB` : `${(sz / 1024).toFixed(1)} KB`;
+            artifacts.push({ name: path.basename(filePath), desc: desc || '', size: szStr });
+          }
+        };
+
+        registerArtifact(r.stepFilePath, '3D CAD Solid B-Rep');
+        registerArtifact(r.jsonSummaryPath, 'Інженерне резюме (<1200 tok)');
+        registerArtifact(r.jsonTopologyPath, 'B-Rep топологія');
+
+        const repPath = path.join(options.outDir, `${base}.verification_report.json`);
+        registerArtifact(repPath, 'RSVS аудит якості');
+
+        const heatPath = r.verificationReport?.summary?.heatmapPath || path.join(options.outDir, `${base}.heatmap.glb`);
+        registerArtifact(heatPath, '3D-теплова карта відхилень');
+
+        for (const a of artifacts) {
+          console.log(`   • ${chalk.bold.white(a.name)} ${chalk.gray(`(${a.size})`)} ➔ ${chalk.cyan(a.desc)}`);
+        }
+      }
+    }
+    console.log('');
+  }
 
   return results;
 }

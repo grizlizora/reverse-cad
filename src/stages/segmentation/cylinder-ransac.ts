@@ -4,7 +4,7 @@
 
 import { CylinderSurface } from '../../types/geometry.js';
 import { CylinderRansacContext, extractCylindersRANSACInternal } from './cylinder-ransac-coordinator.js';
-import { pickRandomUnassigned, pickLocalizedNeighborBuffers } from './spatial-grid.js';
+import { pickRandomUnassigned, pickLocalizedNeighborBuffers } from './cylinder-sampler.js';
 
 export type { CylinderRansacContext };
 export { pickRandomUnassigned, pickLocalizedNeighborBuffers };

@@ -2,8 +2,15 @@
 // src/stages/decimation/coplanar-collapser.ts — Safe Coplanar Edge Collapse
 // ==============================================================================
 
-import { RawMesh, Point3D } from '../../types/geometry.js';
+import { RawMesh } from '../../types/geometry.js';
 import { MeshCSR } from './mesh-csr.js';
+import { FlatVertexIncidence } from './mesh-incidence-flat.js';
+import {
+  computeScaleInvariantTolerances,
+  computeDatumPlaneVertices,
+  computeChamferAndDatumLocks
+} from './qem-datum-locks.js';
+import { validateCollapseSafety } from './collapse-validator.js';
 
 export interface CollapseResult {
   remap: Int32Array;
@@ -11,8 +18,9 @@ export interface CollapseResult {
 }
 
 /**
- * Collapses internal coplanar edges while strictly preventing normal flips
- * and aspect-ratio slivers.
+ * Collapses internal coplanar edges while strictly preventing normal flips,
+ * aspect-ratio slivers, and datum plane erosion. Uses Zero-Allocation FlatVertexIncidence,
+ * synchronized datum locks, and scale-invariant edge thresholds.
  */
 export function collapseCoplanarEdges(
   mesh: RawMesh,
@@ -25,7 +33,7 @@ export function collapseCoplanarEdges(
   const numTriangles = mesh.triangleCount;
   const positions = mesh.positions;
   const indices = mesh.indices;
-  const { faceNormals, vOffsets, vTris, edgeToFaces } = csr;
+  const { faceNormals, edgeToFaces } = csr;
 
   const cosCoplanar = Math.cos(coplanarAngleRad);
 
@@ -35,125 +43,47 @@ export function collapseCoplanarEdges(
   const findRoot = (v: number): number => {
     let curr = v;
     while (remap[curr] !== curr) {
+      remap[curr] = remap[remap[curr]];
       curr = remap[curr];
     }
-    remap[v] = curr;
     return curr;
   };
 
-  // Convert CSR into mutable incident array for vertices that get modified
-  const vTrisLists: number[][] = new Array(numVertices);
-  for (let v = 0; v < numVertices; v++) {
-    const start = vOffsets[v];
-    const end = vOffsets[v + 1];
-    const count = end - start;
-    const list = new Array(count);
-    for (let j = 0; j < count; j++) {
-      list[j] = vTris[start + j];
-    }
-    vTrisLists[v] = list;
-  }
+  // Zero-allocation flat linked vertex-triangle incidence
+  const incidence = new FlatVertexIncidence(numVertices, csr);
+  const { head, next, vTris } = incidence;
 
-  // Pre-identify entrance chamfer vertices (slope 30°-60° bordering a planar face)
-  const isChamferVertex = new Uint8Array(numVertices);
-  for (let v = 0; v < numVertices; v++) {
-    const start = vOffsets[v];
-    const end = vOffsets[v + 1];
-    let hasChamferSlope = false;
-    let hasFlatAdjacent = false;
-    for (let i = start; i < end; i++) {
-      const t = vTris[i] * 3;
-      const nz = Math.abs(faceNormals[t + 2]);
-      if (nz >= 0.45 && nz <= 0.88) hasChamferSlope = true;
-      if (nz >= 0.98) hasFlatAdjacent = true;
-    }
-    if (hasChamferSlope && hasFlatAdjacent) {
-      isChamferVertex[v] = 1;
-    }
-  }
+  // Scale-invariant thresholds, datum plane locks, and entrance chamfer locks
+  const tol = computeScaleInvariantTolerances(positions);
+  const scaleSq = tol.scaleRatio * tol.scaleRatio;
+  const maxCoplanarLockedLenSq = 0.64 * scaleSq;
+  const maxFlankLenSq = 0.36 * scaleSq;
+  const maxCreaseMicroLenSq = 0.16 * scaleSq;
+
+  const isDatumPlaneVertex = computeDatumPlaneVertices(
+    positions,
+    numVertices,
+    tol.minZ,
+    tol.maxZ,
+    tol.datumTol
+  );
+  const isChamferVertex = computeChamferAndDatumLocks(csr, numVertices);
 
   let remainingTriangles = numTriangles;
 
-  const wouldInvertNormal = (vTarget: number, vRemove: number): boolean => {
-    const pTargetX = positions[vTarget * 3];
-    const pTargetY = positions[vTarget * 3 + 1];
-    const pTargetZ = positions[vTarget * 3 + 2];
+  const validationCtx = {
+    positions,
+    indices,
+    faceNormals,
+    vTris,
+    head,
+    next,
+    findRoot
+  };
 
-    const incidentTris = vTrisLists[vRemove];
-    if (!incidentTris) return false;
-
-    for (let k = 0; k < incidentTris.length; k++) {
-      const t = incidentTris[k];
-      const t3 = t * 3;
-      const i0 = findRoot(indices[t3]);
-      const i1 = findRoot(indices[t3 + 1]);
-      const i2 = findRoot(indices[t3 + 2]);
-
-      const newI0 = i0 === vRemove ? vTarget : i0;
-      const newI1 = i1 === vRemove ? vTarget : i1;
-      const newI2 = i2 === vRemove ? vTarget : i2;
-
-      // Degenerate collapsed triangle
-      if (newI0 === newI1 || newI1 === newI2 || newI2 === newI0) {
-        continue;
-      }
-
-      const p0x = newI0 === vTarget ? pTargetX : positions[newI0 * 3];
-      const p0y = newI0 === vTarget ? pTargetY : positions[newI0 * 3 + 1];
-      const p0z = newI0 === vTarget ? pTargetZ : positions[newI0 * 3 + 2];
-
-      const p1x = newI1 === vTarget ? pTargetX : positions[newI1 * 3];
-      const p1y = newI1 === vTarget ? pTargetY : positions[newI1 * 3 + 1];
-      const p1z = newI1 === vTarget ? pTargetZ : positions[newI1 * 3 + 2];
-
-      const p2x = newI2 === vTarget ? pTargetX : positions[newI2 * 3];
-      const p2y = newI2 === vTarget ? pTargetY : positions[newI2 * 3 + 1];
-      const p2z = newI2 === vTarget ? pTargetZ : positions[newI2 * 3 + 2];
-
-      // New face normal
-      const e1x = p1x - p0x, e1y = p1y - p0y, e1z = p1z - p0z;
-      const e2x = p2x - p0x, e2y = p2y - p0y, e2z = p2z - p0z;
-
-      const nx = e1y * e2z - e1z * e2y;
-      const ny = e1z * e2x - e1x * e2z;
-      const nz = e1x * e2y - e1y * e2x;
-      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-      if (len < 1e-12) return true;
-
-      const invLen = 1.0 / len;
-      const normNx = nx * invLen;
-      const normNy = ny * invLen;
-      const normNz = nz * invLen;
-
-      const oldNx = faceNormals[t3];
-      const oldNy = faceNormals[t3 + 1];
-      const oldNz = faceNormals[t3 + 2];
-
-      const dotVal = normNx * oldNx + normNy * oldNy + normNz * oldNz;
-      if (dotVal < 0.98) {
-        return true;
-      }
-
-      // Check aspect ratio to prevent creating sliver triangles
-      const e01x = p1x - p0x, e01y = p1y - p0y, e01z = p1z - p0z;
-      const e12x = p2x - p1x, e12y = p2y - p1y, e12z = p2z - p1z;
-      const e20x = p0x - p2x, e20y = p0y - p2y, e20z = p0z - p2z;
-
-      const l01 = Math.sqrt(e01x * e01x + e01y * e01y + e01z * e01z);
-      const l12 = Math.sqrt(e12x * e12x + e12y * e12y + e12z * e12z);
-      const l20 = Math.sqrt(e20x * e20x + e20y * e20y + e20z * e20z);
-      const maxEdge = Math.max(l01, l12, l20);
-
-      const crossX = e01y * (-e20z) - e01z * (-e20y);
-      const crossY = e01z * (-e20x) - e01x * (-e20z);
-      const crossZ = e01x * (-e20y) - e01y * (-e20x);
-      const area2 = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
-      const minHeight = area2 / (maxEdge + 1e-12);
-      if (minHeight < 0.01 * maxEdge) {
-        return true;
-      }
-    }
-    return false;
+  const validationOpts = {
+    minCosNormalDev: 0.98,
+    minHeightRatio: 0.01
   };
 
   for (const [key, faces] of edgeToFaces.entries()) {
@@ -184,38 +114,39 @@ export function collapseCoplanarEdges(
 
     const lockedA = isVertexLocked[rootA];
     const lockedB = isVertexLocked[rootB];
+    const datumA = isDatumPlaneVertex[rootA];
+    const datumB = isDatumPlaneVertex[rootB];
     const isChamfer = isChamferVertex[rootA] || isChamferVertex[rootB];
+
+    // NEVER collapse curved entrance chamfers to maintain 100% circular quad symmetry
+    if (isChamfer) {
+      continue;
+    }
 
     // Branch 1: Strictly coplanar (flat walls, flat faces, planar pockets)
     if (dotVal >= cosCoplanar) {
-      if (!lockedA && !lockedB) {
+      if (datumA && !datumB) {
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootA; removeV = rootB; }
+      } else if (!datumA && datumB) {
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootB; removeV = rootA; }
+      } else if (datumA && datumB) {
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootA; removeV = rootB; }
+      } else if (!lockedA && !lockedB) {
         targetV = rootA;
         removeV = rootB;
       } else if (lockedA && !lockedB) {
-        if (edgeLenSq <= 0.64) {
-          targetV = rootA;
-          removeV = rootB;
-        }
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootA; removeV = rootB; }
       } else if (!lockedA && lockedB) {
-        if (edgeLenSq <= 0.64) {
-          targetV = rootB;
-          removeV = rootA;
-        }
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootB; removeV = rootA; }
       } else if (lockedA && lockedB) {
-        if (edgeLenSq <= 0.64) {
-          targetV = rootA;
-          removeV = rootB;
-        }
+        if (edgeLenSq <= maxCoplanarLockedLenSq) { targetV = rootA; removeV = rootB; }
       }
     }
-    // NEVER collapse curved entrance chamfers to maintain 100% circular quad symmetry
-    else if (isChamfer) {
-      continue;
-    }
-    // Branch 2: Smooth flank surface collapse (curved helical flank walls)
-    // ONLY allowed when at least one vertex is UNLOCKED (interior facet vertex).
-    // NEVER collapse when BOTH vertices are locked (protects chamfer circles, tooth crests, tooth roots)!
-    else if (dotVal >= Math.cos((5.0 * Math.PI) / 180.0) && edgeLenSq <= 0.36) {
+    // Branch 2: Smooth flank surface collapse
+    else if (dotVal >= Math.cos((5.0 * Math.PI) / 180.0) && edgeLenSq <= maxFlankLenSq) {
+      if (datumA || datumB) {
+        continue;
+      }
       if (!lockedA && !lockedB) {
         targetV = rootA;
         removeV = rootB;
@@ -227,27 +158,26 @@ export function collapseCoplanarEdges(
         removeV = rootA;
       }
     }
-    // Branch 3: Sharp crease ridge micro-collapse (thread crests & roots <= 0.40mm)
-    // Only collapses adjacent micro-segments to prevent tooth shearing
-    else if (lockedA && lockedB && dotVal < 0.90 && edgeLenSq <= 0.16) {
+    // Branch 3: Sharp crease ridge micro-collapse
+    else if (lockedA && lockedB && !datumA && !datumB && dotVal < 0.90 && edgeLenSq <= maxCreaseMicroLenSq) {
       targetV = rootA;
       removeV = rootB;
     }
 
     if (targetV === -1 || removeV === -1) continue;
 
-    if (wouldInvertNormal(targetV, removeV)) continue;
+    if (!validateCollapseSafety(validationCtx, targetV, removeV, validationOpts)) {
+      continue;
+    }
 
+    // Perform collapse and propagate lock states
     remap[removeV] = targetV;
+    if (isVertexLocked[removeV]) isVertexLocked[targetV] = 1;
+    if (isDatumPlaneVertex[removeV]) isDatumPlaneVertex[targetV] = 1;
+    if (isChamferVertex[removeV]) isChamferVertex[targetV] = 1;
     remainingTriangles -= 2;
 
-    const listTarget = vTrisLists[targetV];
-    const listRemove = vTrisLists[removeV];
-    if (listTarget && listRemove) {
-      for (let k = 0; k < listRemove.length; k++) {
-        listTarget.push(listRemove[k]);
-      }
-    }
+    incidence.merge(targetV, removeV);
   }
 
   return {

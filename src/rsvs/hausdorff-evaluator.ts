@@ -1,12 +1,13 @@
 // ==============================================================================
-// src/rsvs/hausdorff-evaluator.ts — Pure Hausdorff Residual Evaluator
+// src/rsvs/hausdorff-evaluator.ts — Pure Hausdorff Residual Evaluator Façade
 // ==============================================================================
 
 import { RawMesh, SurfacePrimitive } from '../types/geometry.js';
 import { samplePointsAreaWeighted, SamplePoint } from './cdf-sampler.js';
-import { distancePointToAnalyticalSurface } from './surface-projections.js';
-import { distancePointToMeshTriangleDirect } from './triangle-projection.js';
 import { quickSelect } from '../math/quick-select.js';
+import { SurfaceLookupIndex } from './hausdorff/surface-id-index.js';
+import { evaluateHausdorffDirect, evaluateDirectResidual } from './hausdorff/hausdorff-direct.js';
+import { buildSpatialGrid, evaluateHausdorffCross } from './hausdorff/hausdorff-cross.js';
 
 export interface HausdorffMetrics {
   hausdorff99Mm: number;
@@ -17,8 +18,7 @@ export interface HausdorffMetrics {
 }
 
 /**
- * Evaluates residual distance for a single query point against assigned or nearest surfaces
- * using Zero-Heap-Allocation scalar arithmetic.
+ * Backward compatible point evaluation using Zero-Heap-Allocation scalar arithmetic.
  */
 export function evaluatePointResidual(
   sample: SamplePoint,
@@ -26,34 +26,25 @@ export function evaluatePointResidual(
   surfaces: SurfacePrimitive[],
   triangleToSurface: Map<number, SurfacePrimitive>
 ): number {
-  const { pt, triangleIndex } = sample;
-  const px = pt[0], py = pt[1], pz = pt[2];
-  const s = triangleToSurface.get(triangleIndex);
-
-  if (s) {
-    if (s.type === 'plane' || s.type === 'cylinder' || s.type === 'cone' || s.type === 'torus') {
-      return distancePointToAnalyticalSurface(px, py, pz, s);
-    } else {
-      // Freeform: project to triangle facets with zero-allocation direct buffer reader
-      return distancePointToMeshTriangleDirect(px, py, pz, mesh.positions, mesh.indices, triangleIndex);
-    }
-  }
-
-  // Unassigned point: project to its source triangle facet (emitted as exact facet plane in STEP)
-  return distancePointToMeshTriangleDirect(px, py, pz, mesh.positions, mesh.indices, triangleIndex);
+  const index = new SurfaceLookupIndex(surfaces, mesh.triangleCount);
+  return evaluateDirectResidual(sample, mesh, index);
 }
 
 /**
- * Computes Hausdorff distance (H99, Hmax) and RMSE using deterministic Halton sampling
- * and O(N) linear-time QuickSelect.
+ * Computes Hausdorff distance (H99, Hmax) and RMSE using deterministic Halton sampling,
+ * fast 3D spatial indexing against ground truth, and O(N) linear-time QuickSelect.
  */
 export function evaluateHausdorff(
   mesh: RawMesh,
   surfaces: SurfacePrimitive[],
-  sampleCount = 3000
+  sampleCount = 3000,
+  rawMesh?: RawMesh
 ): HausdorffMetrics {
-  const { samples } = samplePointsAreaWeighted(mesh, sampleCount);
+  const sourceMesh = (rawMesh && rawMesh !== mesh && rawMesh.triangleCount > 0) ? rawMesh : mesh;
+  const isComparingCrossMesh = sourceMesh !== mesh;
+  const { samples } = samplePointsAreaWeighted(sourceMesh, sampleCount);
   const n = samples.length;
+
   if (n === 0) {
     return {
       hausdorff99Mm: 0,
@@ -64,39 +55,22 @@ export function evaluateHausdorff(
     };
   }
 
-  // Map triangle indices to surfaces
-  const triangleToSurface = new Map<number, SurfacePrimitive>();
-  for (let sIdx = 0; sIdx < surfaces.length; sIdx++) {
-    const s = surfaces[sIdx];
-    const inliers = s.inlierIndices;
-    for (let i = 0; i < inliers.length; i++) {
-      triangleToSurface.set(inliers[i], s);
-    }
-  }
+  const surfaceIndex = new SurfaceLookupIndex(surfaces, mesh.triangleCount);
 
-  const residuals = new Float32Array(n);
-  let sumSq = 0;
-  let maxVal = 0;
+  const evalResult = isComparingCrossMesh
+    ? evaluateHausdorffCross(mesh, surfaces, samples, surfaceIndex, buildSpatialGrid(mesh))
+    : evaluateHausdorffDirect(mesh, surfaces, samples, surfaceIndex);
 
-  for (let i = 0; i < n; i++) {
-    const res = evaluatePointResidual(samples[i], mesh, surfaces, triangleToSurface);
-    residuals[i] = res;
-    sumSq += res * res;
-    if (res > maxVal) maxVal = res;
-  }
-
-  const rmseMm = Math.sqrt(sumSq / n);
-
-  // Copy residuals before QuickSelect (to preserve exact residual sequence)
-  const residualsCopy = new Float32Array(residuals);
+  const rmseMm = Math.sqrt(evalResult.sumSq / n);
+  const residualsCopy = new Float32Array(evalResult.residuals);
   const k99 = Math.min(n - 1, Math.floor(n * 0.99));
   const h99 = quickSelect(residualsCopy, k99);
 
   return {
     hausdorff99Mm: h99,
-    hausdorffMaxMm: maxVal,
+    hausdorffMaxMm: evalResult.maxVal,
     rmseMm,
     sampledPointsCount: n,
-    residuals
+    residuals: evalResult.residuals
   };
 }

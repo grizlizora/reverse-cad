@@ -10,6 +10,8 @@ import { generateBinaryHeatmapGlb } from './heatmap-glb.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
+import { StepBrepValidator } from '../kernel/step/step-brep-validator.js';
+
 export * from './heatmap-glb.js';
 
 export interface RSVSExecutionOptions {
@@ -20,6 +22,10 @@ export interface RSVSExecutionOptions {
   degenerateCount: number;
   eulerCharacteristic: number;
   heatmapMode?: 'failed-only' | 'always' | 'none';
+  rawMesh?: RawMesh;
+  rawMassProps?: { centerOfMass: [number, number, number]; volumeMm3: number };
+  stepFilePath?: string;
+  skipReportFile?: boolean;
 }
 
 /**
@@ -36,15 +42,40 @@ export function runRSVSInMemory(
     openEdgesCount: number;
     degenerateCount: number;
     eulerCharacteristic: number;
+    rawMesh?: RawMesh;
+    rawMassProps?: { centerOfMass: [number, number, number]; volumeMm3: number };
+    stepFilePath?: string;
   }
 ): { report: VerificationReport; gatesList: GateResult[]; hasFailed: boolean; hasWarning: boolean } {
   const startTime = Date.now();
 
+  let stepValidation: any = undefined;
+  if (options.stepFilePath && fs.existsSync(options.stepFilePath)) {
+    try {
+      const validator = new StepBrepValidator();
+      const stepRep = validator.validate(options.stepFilePath, { geometricTolerance: 1e-4 });
+      stepValidation = {
+        isWatertight: stepRep.isWatertight,
+        is2Manifold: stepRep.is2Manifold,
+        openEdgesCount: stepRep.openEdgesCount,
+        nonManifoldEdgesCount: stepRep.nonManifoldEdgesCount,
+        invertedOrientationsCount: stepRep.invertedOrientationsCount,
+        totalBoreSpanners: stepRep.totalBoreSpanners,
+        shellsCount: stepRep.detectedShellsCount
+      };
+    } catch {}
+  }
+
   const gate0 = evaluateGate0(mesh, options.openEdgesCount, options.degenerateCount, options.eulerCharacteristic, shells.length);
   const gate1 = evaluateGate1(mesh, surfaces);
   const gate2 = evaluateGate2(profiling);
-  const gate3 = evaluateGate3(options.isClosedSolid);
-  const gate4 = evaluateGate4(mesh, surfaces, shells);
+  const gate3 = evaluateGate3(options.isClosedSolid, stepValidation);
+  const gate4 = evaluateGate4(mesh, surfaces, shells, {
+    sampleCount: 3000,
+    rawMesh: options.rawMesh,
+    rawMassProps: options.rawMassProps,
+    hasThreads: profiling.threads && profiling.threads.length > 0
+  });
 
   const gatesList = [gate0, gate1, gate2, gate3, gate4];
   const hasFailed = gatesList.some(g => g.status === 'FAILED');
@@ -96,8 +127,10 @@ export async function saveRSVSArtifacts(
     report.summary.heatmapPath = heatmapPath;
   }
 
-  const reportPath = path.join(options.outputDir, `${options.baseFileName}.verification_report.json`);
-  await fs.promises.writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8');
+  if (!options.skipReportFile) {
+    const reportPath = path.join(options.outputDir, `${options.baseFileName}.verification_report.json`);
+    await fs.promises.writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8');
+  }
 }
 
 /**

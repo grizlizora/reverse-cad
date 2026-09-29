@@ -4,6 +4,9 @@
 
 import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
+import { StepSolidBrepEmitter, type SolidEmissionResult } from './step-solid-brep-emitter.js';
+
+export type { SolidEmissionResult } from './step-solid-brep-emitter.js';
 
 export interface JordanFaceDefinition {
   outerLoop: number[];
@@ -13,8 +16,8 @@ export interface JordanFaceDefinition {
 }
 
 /**
- * Manages atomic STEP AP242 entity serialization, block buffering (256KB),
- * and streaming of closed shells and solid B-Reps.
+ * Manages atomic STEP AP242 face entity serialization, block buffering (256KB),
+ * and delegates shell and solid B-Rep streaming to StepSolidBrepEmitter.
  */
 export class StepFaceEmitter {
   private readonly writer: StepStreamWriter;
@@ -22,6 +25,7 @@ export class StepFaceEmitter {
   private readonly pointIds: string[];
   private chunkBuffer: string = '';
   private readonly chunkCharLimit: number;
+  private readonly solidEmitter: StepSolidBrepEmitter;
 
   constructor(
     writer: StepStreamWriter,
@@ -33,6 +37,7 @@ export class StepFaceEmitter {
     this.allocator = allocator;
     this.pointIds = pointIds;
     this.chunkCharLimit = chunkCharLimit;
+    this.solidEmitter = new StepSolidBrepEmitter(writer, allocator, chunkCharLimit);
   }
 
   private async checkFlush(): Promise<void> {
@@ -43,9 +48,11 @@ export class StepFaceEmitter {
 
   public async flush(): Promise<void> {
     if (this.chunkBuffer.length > 0) {
-      await this.writer.writeBlock(this.chunkBuffer);
+      const chunk = this.chunkBuffer;
       this.chunkBuffer = '';
+      await this.writer.writeBlock(chunk);
     }
+    await this.solidEmitter.flush();
   }
 
   /**
@@ -132,23 +139,11 @@ export class StepFaceEmitter {
   }
 
   /**
-   * Streams a CLOSED_SHELL in 1000-face blocks without giant single-string memory spikes.
+   * Streams a CLOSED_SHELL in blocks without giant single-string memory spikes.
    */
   public async emitClosedShell(shellFaceIds: string[]): Promise<string> {
-    const closedShellId = this.allocator.nextId();
-    this.chunkBuffer += `${closedShellId} = CLOSED_SHELL('', (\n`;
-    const total = shellFaceIds.length;
-
-    for (let fIdx = 0; fIdx < total; fIdx++) {
-      this.chunkBuffer += shellFaceIds[fIdx];
-      this.chunkBuffer += fIdx === total - 1 ? '));\n' : ', ';
-      if (this.chunkBuffer.length >= this.chunkCharLimit) {
-        await this.flush();
-      }
-    }
-
     await this.flush();
-    return closedShellId;
+    return this.solidEmitter.emitClosedShell(shellFaceIds);
   }
 
   /**
@@ -158,22 +153,21 @@ export class StepFaceEmitter {
     solidName: string,
     closedShellId: string,
     styleId?: string
-  ): Promise<{ brepId: string; styledItemId?: string }> {
+  ): Promise<SolidEmissionResult> {
     await this.flush();
+    return this.solidEmitter.emitSolidBrep(solidName, closedShellId, styleId);
+  }
 
-    const brepId = this.allocator.nextId();
-    await this.writer.writeLine(
-      `${brepId} = MANIFOLD_SOLID_BREP('${solidName}', ${closedShellId});`
-    );
-
-    let styledItemId: string | undefined;
-    if (styleId) {
-      styledItemId = this.allocator.nextId();
-      await this.writer.writeLine(
-        `${styledItemId} = STYLED_ITEM('', (${styleId}), ${brepId});`
-      );
-    }
-
-    return { brepId, styledItemId };
+  /**
+   * Emits BREP_WITH_VOIDS for solids containing internal enclosed voids/cavities (ISO 10303-42).
+   */
+  public async emitBrepWithVoids(
+    solidName: string,
+    outerClosedShellId: string,
+    voidShellIds: string[],
+    styleId?: string
+  ): Promise<SolidEmissionResult> {
+    await this.flush();
+    return this.solidEmitter.emitBrepWithVoids(solidName, outerClosedShellId, voidShellIds, styleId);
   }
 }

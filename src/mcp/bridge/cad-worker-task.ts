@@ -11,7 +11,7 @@ export { CadWorkerDispatcher };
 
 /**
  * Executes a CAD tool invocation with 800k decimation threshold and safe memory handling.
- * Yields event loop microtasks and triggers garbage collection to prevent Event Loop stalls.
+ * Relies on deterministic buffer disposal in worker threads without Stop-The-World global.gc() stalls.
  */
 export async function executeCadTask(
   name: string,
@@ -20,30 +20,20 @@ export async function executeCadTask(
 ): Promise<any> {
   const { filePath, outDir, baseName } = await validateToolParams(name, args);
 
-  try {
-    switch (name) {
-      case 'cad_analyze_stl':
-        return await CadWorkerDispatcher.analyzeMesh(filePath, CAD_DECIMATION_THRESHOLD, log);
+  switch (name) {
+    case 'cad_analyze_stl':
+      return await CadWorkerDispatcher.analyzeMesh(filePath, CAD_DECIMATION_THRESHOLD, log);
 
-      case 'cad_detect_threads':
-        return await CadWorkerDispatcher.detectThreads(filePath, CAD_DECIMATION_THRESHOLD, log);
+    case 'cad_detect_threads':
+      return await CadWorkerDispatcher.detectThreads(filePath, CAD_DECIMATION_THRESHOLD, log);
 
-      case 'cad_verify_rsvs':
-        return await CadWorkerDispatcher.verifyRsvs(filePath, outDir, baseName, CAD_DECIMATION_THRESHOLD, log);
+    case 'cad_verify_rsvs':
+      return await CadWorkerDispatcher.verifyRsvs(filePath, outDir, baseName, CAD_DECIMATION_THRESHOLD, log);
 
-      case 'cad_convert_to_step':
-        return await CadWorkerDispatcher.convertToStep(filePath, outDir, baseName, CAD_DECIMATION_THRESHOLD, log);
+    case 'cad_convert_to_step':
+      return await CadWorkerDispatcher.convertToStep(filePath, outDir, baseName, CAD_DECIMATION_THRESHOLD, log);
 
-      default:
-        throw new Error(`Unknown tool: ${name}`);
-    }
-  } finally {
-    if (typeof (global as any).gc === 'function') {
-      try {
-        (global as any).gc();
-      } catch {
-        // ignore gc failure
-      }
-    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
   }
 }

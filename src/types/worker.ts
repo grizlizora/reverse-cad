@@ -8,6 +8,14 @@ import { CADFeaturesSummary } from './features.js';
 export type HeatmapMode = 'failed-only' | 'always' | 'none';
 export type QualityPreset = 'high' | 'fast';
 
+export interface EmitTargets {
+  step: boolean;
+  summary: boolean;
+  topology: boolean;
+  report: boolean;
+  heatmap: boolean;
+}
+
 export interface PipelineOptions {
   threads: number;
   quality: QualityPreset;
@@ -21,6 +29,10 @@ export interface PipelineOptions {
   alignCadViewer?: boolean;
   decimate?: boolean;
   maxTrianglesThreshold?: number;
+  representationMode?: 'brep' | 'tessellated' | 'auto';
+  threadMode?: 'physical' | 'semantic' | 'auto';
+  material?: string;
+  emitTargets?: EmitTargets;
 }
 
 export interface PipelineTaskPayload {
@@ -30,6 +42,24 @@ export interface PipelineTaskPayload {
   fileSizeBytes: number;
   options: PipelineOptions;
   progressPort?: any; // MessagePort for real-time progress events across worker threads
+  sharedAbortBuffer?: SharedArrayBuffer; // Cooperative atomic cancellation flag
+}
+
+export type CadTaskType = 'ANALYZE' | 'DETECT_THREADS' | 'VERIFY_RSVS' | 'CONVERT_STEP';
+
+export interface CadWorkerTaskPayload {
+  taskType: CadTaskType;
+  filePath: string;
+  taskId?: string;
+  sharedAbortBuffer?: SharedArrayBuffer;
+  outDir?: string;
+  baseName?: string;
+  threshold?: number;
+  progressPort?: any;
+  options?: {
+    alignCadViewer?: boolean;
+    [key: string]: any;
+  };
 }
 
 export type PipelineStage =

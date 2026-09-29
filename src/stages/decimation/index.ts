@@ -1,5 +1,5 @@
 // ==============================================================================
-// src/stages/decimation/index.ts — Unified Feature-Preserving Decimation Engine
+// src/stages/decimation/index.ts — Unified Feature-Preserving 2-Stage Decimation Engine
 // ==============================================================================
 
 import { RawMesh } from '../../types/geometry.js';
@@ -7,10 +7,14 @@ import { buildMeshCSR } from './mesh-csr.js';
 import { buildFeatureShield, KeepoutBox } from './feature-shield.js';
 import { collapseCoplanarEdges } from './coplanar-collapser.js';
 import { compactDecimatedBuffers } from './buffer-compactor.js';
+import { simplifyMeshQEM } from './qem-simplifier.js';
 
 export * from './mesh-csr.js';
+export * from './mesh-incidence-flat.js';
 export * from './feature-shield.js';
+export * from './qem-datum-locks.js';
 export * from './qem-collapse-queue.js';
+export * from './qem-simplifier.js';
 export * from './coplanar-collapser.js';
 export * from './buffer-compactor.js';
 
@@ -22,10 +26,12 @@ export interface DecimationOptions {
   fineFeatureAngleDeg?: number;     // Preserve fine feature chords (default 4°)
   coplanarAngleDeg?: number;        // Collapse only internal coplanar edges with angle < deg (default 0.5°)
   keepoutZones?: KeepoutBox[];      // Geometric keepout zones (notches, pads, holes)
+  enableCoplanarPrepass?: boolean;  // Optional Stage 2A fast linear coplanar pre-pass before Stage 2B QEM
 }
 
 /**
- * Precision mesh decimation with 100% preservation of mechanical feature elements
+ * Precision 2-stage mesh decimation (Stage 2A Coplanar Collapse + Stage 2B QEM Simplifier)
+ * with 100% preservation of mechanical feature elements
  * (ratchet notches, pad cutouts, fillets, chamfers, thin walls, stampings).
  */
 export function decimateMesh(mesh: RawMesh, options: DecimationOptions = {}): RawMesh {
@@ -35,45 +41,52 @@ export function decimateMesh(mesh: RawMesh, options: DecimationOptions = {}): Ra
     return mesh;
   }
 
-  const featureAngleRad = ((options.featureAngleDeg ?? 15) * Math.PI) / 180.0;
-  const curvatureAngleRad = ((options.curvatureAngleDeg ?? 15) * Math.PI) / 180.0;
+  const featureAngleRad = ((options.featureAngleDeg ?? 12) * Math.PI) / 180.0;
+  const curvatureAngleRad = ((options.curvatureAngleDeg ?? 12) * Math.PI) / 180.0;
   const fineFeatureAngleRad = ((options.fineFeatureAngleDeg ?? 15.0) * Math.PI) / 180.0;
-  const coplanarAngleRad = ((options.coplanarAngleDeg ?? 0.5) * Math.PI) / 180.0;
+  const coplanarAngleRad = ((options.coplanarAngleDeg ?? 1.5) * Math.PI) / 180.0;
   const targetTriangles = options.targetReductionRatio !== undefined
     ? Math.max(threshold, Math.floor(mesh.triangleCount * options.targetReductionRatio))
     : threshold;
 
-  let currentMesh = mesh;
-  const maxPasses = 4;
+  let workingMesh = mesh;
+  let csr = buildMeshCSR(workingMesh);
+  let isVertexLocked = buildFeatureShield(workingMesh, csr, {
+    featureAngleRad,
+    curvatureAngleRad,
+    fineFeatureAngleRad,
+    keepoutZones: options.keepoutZones
+  });
 
-  for (let pass = 0; pass < maxPasses; pass++) {
-    if (currentMesh.triangleCount <= targetTriangles) break;
-
-    // 1. Build CSR (Compressed Sparse Row) and compute face normals
-    const csr = buildMeshCSR(currentMesh);
-
-    // 2. Build 5-Tier Feature Shield
-    const isVertexLocked = buildFeatureShield(currentMesh, csr, {
-      featureAngleRad,
-      curvatureAngleRad,
-      fineFeatureAngleRad,
-      keepoutZones: options.keepoutZones
-    });
-
-    // 3. Safe coplanar & crease-tangent interior edge collapse
+  // Stage 2A: Fast linear coplanar pre-pass when explicitly requested or on ultra-dense meshes (> 250k tris)
+  if (options.enableCoplanarPrepass === true || workingMesh.triangleCount > 250000) {
+    const prepassTarget = Math.max(targetTriangles, Math.floor(workingMesh.triangleCount * 0.6));
     const { remap, collapsedCount } = collapseCoplanarEdges(
-      currentMesh,
+      workingMesh,
       csr,
       isVertexLocked,
       coplanarAngleRad,
-      targetTriangles
+      prepassTarget
     );
-
-    if (collapsedCount === 0) break;
-
-    // 4. Compact mesh buffers
-    currentMesh = compactDecimatedBuffers(currentMesh, remap);
+    if (collapsedCount > 0) {
+      workingMesh = compactDecimatedBuffers(workingMesh, remap);
+      if (workingMesh.triangleCount <= targetTriangles) {
+        return workingMesh;
+      }
+      csr = buildMeshCSR(workingMesh);
+      isVertexLocked = buildFeatureShield(workingMesh, csr, {
+        featureAngleRad,
+        curvatureAngleRad,
+        fineFeatureAngleRad,
+        keepoutZones: options.keepoutZones
+      });
+    }
   }
 
-  return currentMesh;
+  // Stage 2B: High-precision Quadric Error Metric (QEM) simplification
+  return simplifyMeshQEM(workingMesh, csr, isVertexLocked, {
+    targetTriangles,
+    maxErrorSq: 0.01,
+    maxNormalDeviationDeg: 20.0
+  });
 }

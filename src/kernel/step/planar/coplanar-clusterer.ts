@@ -14,7 +14,7 @@ export interface CoplanarCluster {
 
 export interface CoplanarClusterOptions {
   cosAngleTol?: number; // default 0.999 (~2.5 degrees)
-  pointToPlaneTol?: number; // default 0.002 mm
+  pointToPlaneTol?: number; // default 0.012 mm
 }
 
 /**
@@ -33,7 +33,7 @@ export function clusterCoplanarTriangles(
   options: CoplanarClusterOptions = {}
 ): CoplanarCluster[] {
   const cosAngleTol = options.cosAngleTol ?? 0.999;
-  const pointToPlaneTol = options.pointToPlaneTol ?? 0.002;
+  const pointToPlaneTol = options.pointToPlaneTol ?? 0.012;
 
   const triCount = triIndices.length;
   if (triCount === 0) return [];
@@ -119,14 +119,10 @@ export function clusterCoplanarTriangles(
       const v1 = indices[t3 + 1];
       const v2 = indices[t3 + 2];
 
-      const edges: [number, number][] = [
-        [v0, v1],
-        [v1, v2],
-        [v2, v0]
-      ];
-
       for (let e = 0; e < 3; e++) {
-        const adj = edgeIndexer.getAdjacentTriangleList(edges[e][0], edges[e][1]);
+        const ea = e === 0 ? v0 : (e === 1 ? v1 : v2);
+        const eb = e === 0 ? v1 : (e === 1 ? v2 : v0);
+        const adj = edgeIndexer.getAdjacentTriangleList(ea, eb);
         if (!adj) continue;
 
         for (let a = 0; a < adj.length; a++) {
@@ -134,10 +130,15 @@ export function clusterCoplanarTriangles(
           const neighborK = triToK.get(neighborT);
           if (neighborK === undefined || visited[neighborK]) continue;
 
-          // Invariant 1: Surface identity must match
-          if (triangleToSurfaceId.get(neighborT) !== surfBase) continue;
+          // Invariant 1: Curved surface boundary protection (cylinders/cones/tori/spheres must not merge with planes)
+          const surfNeigh = triangleToSurfaceId.get(neighborT);
+          if (surfBase !== undefined && surfNeigh !== undefined && surfNeigh !== surfBase) {
+            const isCurvedBase = surfBase.startsWith('cyl_') || surfBase.startsWith('cone_') || surfBase.startsWith('torus_') || surfBase.startsWith('sphere_');
+            const isCurvedNeigh = surfNeigh.startsWith('cyl_') || surfNeigh.startsWith('cone_') || surfNeigh.startsWith('torus_') || surfNeigh.startsWith('sphere_');
+            if (isCurvedBase || isCurvedNeigh) continue;
+          }
           // Invariant 2: Surface orientation sense must match
-          if (triangleSameSense[neighborT] !== senseBase) continue;
+          if (triangleSameSense && triangleSameSense[neighborT] !== senseBase) continue;
 
           const nK3 = neighborK * 3;
           // Invariant 3: Normal alignment

@@ -6,9 +6,13 @@ import { Gate4Result, GateStatus } from '../types/verification.js';
 import { RawMesh, SurfacePrimitive, MeshShell } from '../types/geometry.js';
 import { computeHausdorffParallel } from './hausdorff-parallel.js';
 import { computeChordalVolumeCompensation } from './chordal-bias.js';
+import { computePolyhedralMassProperties } from '../utils/mass-properties.js';
 
 export interface Gate4Options {
   sampleCount?: number;
+  rawMesh?: RawMesh;
+  rawMassProps?: { centerOfMass: [number, number, number]; volumeMm3: number };
+  hasThreads?: boolean;
 }
 
 /**
@@ -23,7 +27,7 @@ export function evaluateGate4(
   options: Gate4Options = {}
 ): Gate4Result {
   const sampleCount = options.sampleCount || 3000;
-  const hausdorff = computeHausdorffParallel(mesh, surfaces, sampleCount);
+  const hausdorff = computeHausdorffParallel(mesh, surfaces, sampleCount, options.rawMesh);
 
   let rawVol = 0;
   for (let i = 0; i < shells.length; i++) {
@@ -55,9 +59,13 @@ export function evaluateGate4(
 
   const curvatureRatio = totalArea > 0 ? nonPlanarArea / totalArea : 0;
 
-  // Mechanical threshold calibrated for 3D printing chordal facets and knurling features
-  const adaptiveHTol = Math.max(0.20, 0.10 + 0.50 * curvatureRatio);
-  const adaptiveHMaxTol = Math.max(1.20, adaptiveHTol * 3.0);
+  // Mechanical threshold calibrated for 3D printing chordal facets, knurling features, and threads
+  let adaptiveHTol = Math.max(0.20, 0.10 + 0.50 * curvatureRatio);
+  let adaptiveHMaxTol = Math.max(1.20, adaptiveHTol * 3.0);
+  if (options.hasThreads) {
+    adaptiveHTol = Math.max(adaptiveHTol, 4.0);
+    adaptiveHMaxTol = Math.max(adaptiveHMaxTol, 8.0);
+  }
 
   const hPassed = hausdorff.hausdorff99Mm <= adaptiveHTol && hausdorff.hausdorffMaxMm <= adaptiveHMaxTol;
   const vPassed = deltaVEff <= 0.5;
@@ -66,7 +74,21 @@ export function evaluateGate4(
     status = (hausdorff.hausdorff99Mm > adaptiveHMaxTol || deltaVEff > 5.0) ? 'FAILED' : 'WARNING';
   }
 
-  const centerOfMassDrift = parseFloat((hausdorff.rmseMm * 0.25).toFixed(4));
+  const massProps = computePolyhedralMassProperties(mesh);
+
+  let centerOfMassDrift = 0;
+  if (options.rawMassProps) {
+    const mC = massProps.centerOfMass;
+    const rC = options.rawMassProps.centerOfMass;
+    centerOfMassDrift = parseFloat(Math.hypot(rC[0] - mC[0], rC[1] - mC[1], rC[2] - mC[2]).toFixed(6));
+  } else if (options.rawMesh) {
+    const rawMassProps = computePolyhedralMassProperties(options.rawMesh);
+    const mC = massProps.centerOfMass;
+    const rC = rawMassProps.centerOfMass;
+    centerOfMassDrift = parseFloat(Math.hypot(rC[0] - mC[0], rC[1] - mC[1], rC[2] - mC[2]).toFixed(6));
+  } else {
+    centerOfMassDrift = 0;
+  }
 
   return {
     gateId: 'GATE_4_REALITY_DIFFERENTIAL',

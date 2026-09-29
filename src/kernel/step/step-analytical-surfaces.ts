@@ -1,5 +1,5 @@
 // ==============================================================================
-// src/kernel/step/step-analytical-surfaces.ts — Analytical B-Rep Surfaces Generator
+// src/kernel/step/step-analytical-surfaces.ts — Analytical B-Rep Surfaces Generator Façade
 // ==============================================================================
 
 import { RawMesh, SurfacePrimitive, PlaneSurface, CylinderSurface, Vector3D } from '../../types/geometry.js';
@@ -7,6 +7,7 @@ import { StepStreamWriter } from './step-stream-writer.js';
 import { StepIdAllocator } from './step-id-allocator.js';
 import { formatStepFloat, computeOrthonormalBasis } from './step-orthonormal-basis.js';
 import { preIndexFacetPlanes } from './step-facet-plane-indexer.js';
+import { createFacetPlaneResolver } from './facet-plane-fallback-resolver.js';
 
 export interface SurfaceStepMapping {
   surfaceToStepId: Map<string, string>;
@@ -19,8 +20,7 @@ export interface SurfaceStepMapping {
 export { preIndexFacetPlanes };
 
 /**
- * Emits analytical B-Rep surfaces (PLANE, CYLINDRICAL_SURFACE) and pre-indexes
- * all unclassified facet planes to allow non-blocking, continuous 256KB stream writes.
+ * Emits analytical B-Rep surfaces (PLANE, CYLINDRICAL_SURFACE) in batched stream blocks.
  */
 export async function writeAnalyticalSurfaces(
   writer: StepStreamWriter,
@@ -32,31 +32,32 @@ export async function writeAnalyticalSurfaces(
   const triangleToSurfaceId = new Map<number, string>();
   const triangleSameSense = new Uint8Array(mesh.triangleCount).fill(1);
 
+  let buffer = '';
+  const flush = async () => {
+    if (buffer.length > 32768) {
+      await writer.writeBlock(buffer);
+      buffer = '';
+    }
+  };
+
   for (let sIdx = 0; sIdx < surfaces.length; sIdx++) {
     const s = surfaces[sIdx];
 
     if (s.type === 'plane') {
       const p = s as PlaneSurface;
       const ptId = allocator.nextId();
-      await writer.writeLine(
-        `${ptId} = CARTESIAN_POINT('', (${formatStepFloat(p.origin[0])}, ${formatStepFloat(p.origin[1])}, ${formatStepFloat(p.origin[2])}));`
-      );
+      buffer += `${ptId} = CARTESIAN_POINT('', (${formatStepFloat(p.origin[0])}, ${formatStepFloat(p.origin[1])}, ${formatStepFloat(p.origin[2])}));\n`;
 
       const basis = computeOrthonormalBasis(p.normal);
       const dirZ = allocator.nextId();
-      await writer.writeLine(
-        `${dirZ} = DIRECTION('', (${formatStepFloat(basis.dirZ[0])}, ${formatStepFloat(basis.dirZ[1])}, ${formatStepFloat(basis.dirZ[2])}));`
-      );
-
+      buffer += `${dirZ} = DIRECTION('', (${formatStepFloat(basis.dirZ[0])}, ${formatStepFloat(basis.dirZ[1])}, ${formatStepFloat(basis.dirZ[2])}));\n`;
       const dirX = allocator.nextId();
-      await writer.writeLine(
-        `${dirX} = DIRECTION('', (${formatStepFloat(basis.dirX[0])}, ${formatStepFloat(basis.dirX[1])}, ${formatStepFloat(basis.dirX[2])}));`
-      );
+      buffer += `${dirX} = DIRECTION('', (${formatStepFloat(basis.dirX[0])}, ${formatStepFloat(basis.dirX[1])}, ${formatStepFloat(basis.dirX[2])}));\n`;
 
       const axisPlace = allocator.nextId();
-      await writer.writeLine(`${axisPlace} = AXIS2_PLACEMENT_3D('', ${ptId}, ${dirZ}, ${dirX});`);
+      buffer += `${axisPlace} = AXIS2_PLACEMENT_3D('', ${ptId}, ${dirZ}, ${dirX});\n`;
       const planeId = allocator.nextId();
-      await writer.writeLine(`${planeId} = PLANE('${s.id}', ${axisPlace});`);
+      buffer += `${planeId} = PLANE('${s.id}', ${axisPlace});\n`;
       surfaceToStepId.set(s.id, planeId);
 
       const positions = mesh.positions;
@@ -87,44 +88,43 @@ export async function writeAnalyticalSurfaces(
       const dirVec: Vector3D = [...c.axisDirection];
 
       const ptId = allocator.nextId();
-      await writer.writeLine(
-        `${ptId} = CARTESIAN_POINT('', (${formatStepFloat(c.axisOrigin[0])}, ${formatStepFloat(c.axisOrigin[1])}, ${formatStepFloat(c.axisOrigin[2])}));`
-      );
+      buffer += `${ptId} = CARTESIAN_POINT('', (${formatStepFloat(c.axisOrigin[0])}, ${formatStepFloat(c.axisOrigin[1])}, ${formatStepFloat(c.axisOrigin[2])}));\n`;
 
       const basis = computeOrthonormalBasis(dirVec);
       const dirZ = allocator.nextId();
-      await writer.writeLine(
-        `${dirZ} = DIRECTION('', (${formatStepFloat(basis.dirZ[0])}, ${formatStepFloat(basis.dirZ[1])}, ${formatStepFloat(basis.dirZ[2])}));`
-      );
-
+      buffer += `${dirZ} = DIRECTION('', (${formatStepFloat(basis.dirZ[0])}, ${formatStepFloat(basis.dirZ[1])}, ${formatStepFloat(basis.dirZ[2])}));\n`;
       const dirX = allocator.nextId();
-      await writer.writeLine(
-        `${dirX} = DIRECTION('', (${formatStepFloat(basis.dirX[0])}, ${formatStepFloat(basis.dirX[1])}, ${formatStepFloat(basis.dirX[2])}));`
-      );
+      buffer += `${dirX} = DIRECTION('', (${formatStepFloat(basis.dirX[0])}, ${formatStepFloat(basis.dirX[1])}, ${formatStepFloat(basis.dirX[2])}));\n`;
 
       const axisPlace = allocator.nextId();
-      await writer.writeLine(`${axisPlace} = AXIS2_PLACEMENT_3D('', ${ptId}, ${dirZ}, ${dirX});`);
+      buffer += `${axisPlace} = AXIS2_PLACEMENT_3D('', ${ptId}, ${dirZ}, ${dirX});\n`;
       const cylId = allocator.nextId();
-      await writer.writeLine(`${cylId} = CYLINDRICAL_SURFACE('${s.id}', ${axisPlace}, ${formatStepFloat(c.radius)});`);
+      buffer += `${cylId} = CYLINDRICAL_SURFACE('${s.id}', ${axisPlace}, ${formatStepFloat(c.radius)});\n`;
       surfaceToStepId.set(s.id, cylId);
 
-      // NOTE: In STEP B-Rep (ISO 10303-42), POLY_LOOP consists of 3D straight chords.
-      // Placing individual triangular POLY_LOOPs on a CYLINDRICAL_SURFACE causes OpenCASCADE (FreeCAD)
-      // to project straight chords into periodic (u,v) space, crossing the seam and creating
-      // BOPAlgo SelfIntersect, dense horizontal stripe artifacts, and black spots.
-      // Therefore, mesh triangles are emitted on their exact facet planes (PLANE),
-      // while cylindrical analytical parameters are preserved in the semantic CAD feature JSON.
+      if (c.inlierIndices && c.inlierIndices.length > 0) {
+        for (let k = 0; k < c.inlierIndices.length; k++) {
+          triangleToSurfaceId.set(c.inlierIndices[k], cylId);
+        }
+      }
     }
+
+    await flush();
   }
 
-  // Pre-index all remaining unclassified facet planes in batch
-  const facetPlaneCache = await preIndexFacetPlanes(writer, allocator, mesh, triangleToSurfaceId);
+  if (buffer.length > 0) {
+    await writer.writeBlock(buffer);
+  }
 
-  const getOrCreateFacetPlane = async (tIdx: number): Promise<string> => {
-    const existing = triangleToSurfaceId.get(tIdx);
-    if (existing) return existing;
-    return facetPlaneCache.values().next().value || allocator.nextId();
-  };
+  const getOrCreateFacetPlane = createFacetPlaneResolver(
+    writer,
+    allocator,
+    mesh,
+    triangleToSurfaceId,
+    triangleSameSense,
+    surfaceToStepId,
+    surfaces
+  );
 
   return {
     surfaceToStepId,

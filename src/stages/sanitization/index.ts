@@ -50,19 +50,63 @@ export function sanitizeTopology(mesh: RawMesh): SanitizeReport {
     }
   }
 
-  const isWatertight = connectivity.openEdgesCount === 0 && connectivity.nonManifoldEdges === 0;
-
   // 4. Decompose into connected topological shells via BFS
-  const { shells } = decomposeTopologicalShells(
+  let { shells } = decomposeTopologicalShells(
     mesh.positions,
     cleanIndices,
-    connectivity.triangleAdjacency
+    connectivity.flatTriangleAdjacency
   );
+
+  // 4b. Prune disconnected non-manifold micro-debris (slivers < 30 triangles with volume < 1.0 mm³ or < 8 triangles)
+  if (shells.length > 1) {
+    const validShells: MeshShell[] = [];
+    const keep = new Uint8Array(cleanIndices.length / 3);
+    let debrisTriangles = 0;
+
+    for (const sh of shells) {
+      const isDebris = (sh.triangleIndices.length < 30 && Math.abs(sh.signedVolume) < 1.0) || (sh.triangleIndices.length < 8);
+      if (!isDebris) {
+        validShells.push(sh);
+        for (let i = 0; i < sh.triangleIndices.length; i++) {
+          keep[sh.triangleIndices[i]] = 1;
+        }
+      } else {
+        debrisTriangles += sh.triangleIndices.length;
+      }
+    }
+
+    if (validShells.length > 0 && debrisTriangles > 0) {
+      const filteredCount = cleanIndices.length / 3 - debrisTriangles;
+      const filteredIndices = new Uint32Array(filteredCount * 3);
+      let ptr = 0;
+      for (let t = 0; t < cleanIndices.length / 3; t++) {
+        if (keep[t]) {
+          filteredIndices[ptr++] = cleanIndices[t * 3];
+          filteredIndices[ptr++] = cleanIndices[t * 3 + 1];
+          filteredIndices[ptr++] = cleanIndices[t * 3 + 2];
+        }
+      }
+      cleanIndices = filteredIndices;
+      connectivity = analyzeEdgeConnectivity(cleanIndices);
+      shells = decomposeTopologicalShells(
+        mesh.positions,
+        cleanIndices,
+        connectivity.flatTriangleAdjacency
+      ).shells;
+    }
+    // Final guard: never emit open micro-debris shells alongside a primary solid body
+    if (shells.length > 1) {
+      const primaryShells = shells.filter(sh => sh.triangleIndices.length >= 8 && (sh.triangleIndices.length >= 30 || Math.abs(sh.signedVolume) >= 0.1));
+      if (primaryShells.length > 0) shells = primaryShells;
+    }
+  }
+
+  const isWatertight = connectivity.openEdgesCount === 0 && connectivity.nonManifoldEdges === 0;
 
   // 5. Euler characteristic chi = V - E + F
   const eulerCharacteristic = computeEulerCharacteristic(
     cleanIndices,
-    connectivity.edgeFaceCount.size
+    connectivity.uniqueEdgesCount
   );
 
   const cleanTrianglesCount = Math.floor(cleanIndices.length / 3);

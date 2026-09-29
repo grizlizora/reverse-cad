@@ -3,8 +3,8 @@
 // ==============================================================================
 
 export {
-  ISOThreadSpec,
-  ThreadCatalogFile,
+  type ISOThreadSpec,
+  type ThreadCatalogFile,
   loadThreadCatalog,
   STATIC_ISO_METRIC_THREADS
 } from './thread/iso-thread-data.js';

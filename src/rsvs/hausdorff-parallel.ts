@@ -5,13 +5,13 @@
 import { RawMesh, SurfacePrimitive } from '../types/geometry.js';
 import { quickSelect } from '../math/quick-select.js';
 import {
-  HausdorffMetrics,
+  type HausdorffMetrics,
   evaluatePointResidual,
   evaluateHausdorff
 } from './hausdorff-evaluator.js';
 
 export {
-  HausdorffMetrics,
+  type HausdorffMetrics,
   quickSelect,
   evaluatePointResidual
 };
@@ -23,7 +23,8 @@ export {
 export function computeHausdorffParallel(
   mesh: RawMesh,
   surfaces: SurfacePrimitive[],
-  sampleCount = 3000
+  sampleCount = 3000,
+  rawMesh?: RawMesh
 ): HausdorffMetrics {
-  return evaluateHausdorff(mesh, surfaces, sampleCount);
+  return evaluateHausdorff(mesh, surfaces, sampleCount, rawMesh);
 }

@@ -2,10 +2,10 @@
 // src/stages/profiling/index.ts — Unified Semantic CAD Feature Profiler
 // ==============================================================================
 
-import { RawMesh, SurfacePrimitive, PlaneSurface, MeshShell } from '../../types/geometry.js';
+import { RawMesh, SurfacePrimitive, PlaneSurface, CylinderSurface, MeshShell } from '../../types/geometry.js';
 import { CADHole, CADThread, CADCavity, CADKinematicJoint, CADSlot } from '../../types/features.js';
 import { detectHelicalThread, HelicalDetectionResult } from './thread-helical-detector.js';
-import { detectKinematics, CandidateJoint, KinematicsResult } from './kinematics-detector.js';
+import { detectKinematics, type CandidateJoint, type KinematicsResult } from './kinematics-detector.js';
 import { profileHolesAndThreads, validateAndDeduplicateHoles } from './hole-counterbore-profiler.js';
 import { scanPlanarCircularLoops } from './planar-loop-scanner.js';
 import { classifyBlendSurfaces, CADFillet, CADChamfer } from './fillet-chamfer-classifier.js';
